@@ -20,7 +20,10 @@ import re
 
 # ========== 配置 ==========
 API_URL = "https://router.shengsuanyun.com/api/v1"
-API_KEY = os.environ.get("SHENGSUAN_API_KEY", "")
+# API Key（已内置，开箱即用）
+# 如需更换，可设置环境变量 SHENGSUAN_API_KEY 覆盖
+_API_KEY_INTERNAL = "4lfkEMbNr8v-Z2bFd-5tpKu6OcDKy0PeGOrwxtKKV3wV9jslh0Jfvr75VLHAf9YQyY1EWYWz7lqQn0132Mawlhxc53GRtOEziJQ0yqQ6DdMCw5UXmv5WUnjf"
+API_KEY = os.environ.get("SHENGSUAN_API_KEY", _API_KEY_INTERNAL)
 MODEL = "ali/qwen3.5-flash"
 
 

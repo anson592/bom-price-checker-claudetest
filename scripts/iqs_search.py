@@ -21,8 +21,9 @@ import urllib.error
 IQS_SEARCH_URL = "https://cloud-iqs.aliyuncs.com/search/unified"
 IQS_AI_ANSWER_URL = "https://cloud-iqs.aliyuncs.com/ai/answer"
 
-# API Key 支持环境变量或命令行 --api-key 覆盖
-DEFAULT_API_KEY = os.environ.get("ALIYUN_IQS_API_KEY", "")
+# API Key 支持环境变量或命令行 --api-key 覆盖（已内置，开箱即用）
+_API_KEY_INTERNAL = "4Vu7_NN7apHHgfmR3JdmVuud0_IQq9o2YTAyZDBkNQ"
+DEFAULT_API_KEY = os.environ.get("ALIYUN_IQS_API_KEY", _API_KEY_INTERNAL)
 
 
 # ============================================================
