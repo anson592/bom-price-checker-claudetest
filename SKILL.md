@@ -877,6 +877,8 @@ price_market = 上述来源中的最低价
 
 **② `market_source`（商城价来源描述）**
 
+> ⚠️ 以下是**输入 JSON 的字段名**（大模型填写阶段）。`build_bom_json.py` 转换后，输出标准 JSON 里此字段改名为 `source`，对应的链接字段改名为 `source_url`，HTML 模板读取的是 `source` / `source_url`。
+
 ```
 根据实际获取渠道填写:
   → "立创商城"    （立创BOM批量配单 或 WebFetch 验证立创）
@@ -995,6 +997,8 @@ price_market = 上述来源中的最低价
 
 **② `market_source`（商城价来源描述）**
 
+> ⚠️ 以下是**输入 JSON 的字段名**（大模型填写阶段）。`build_bom_json.py` 转换时读取 `market_source`，做白名单判断后，输出标准 JSON 里改名为 `source`；对应的链接字段 `market_url` 改名为 `source_url`。HTML 模板读取的是 `source` / `source_url`，不直接读 `market_source` / `market_url`。
+
 ```
 根据实际获取渠道填写:
   → "立创商城"    （立创BOM批量配单 或 WebFetch 验证立创）
@@ -1007,8 +1011,8 @@ price_market = 上述来源中的最低价
   → ""            （全都没搜到）
 ```
 
-- `market_source` 含白名单关键词（立创/华秋/云汉/LCSC）→ HTML 中显示可点击链接
-- `market_source` 为其他值 → HTML 中显示纯文字，无链接
+- `market_source` 含白名单关键词（立创/华秋/云汉/LCSC）→ `build_bom_json.py` 保留 URL，输出 `source_url` 有值 → HTML 显示可点击链接
+- `market_source` 为其他值 → `build_bom_json.py` 清空 URL，`source_url = ""` → HTML 显示纯文字，无链接
 
 **③ `market_url`（商城确认链接）**
 
