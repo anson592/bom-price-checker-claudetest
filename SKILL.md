@@ -1,4 +1,4 @@
----name: bom-price-checkerdescription: 从产品需求反推BOM清单（支持经济版/标准版/高性能版多版本对比选择，show_widget可视化表格展示），或直接读取BOM表，按元器件类别分级查询价格（立创BOM批量配单最高优先/双源交叉验证+商城验证/买手全网比价），生成带来源链接的比价单。支持博查AI搜索+IQS/ai/answer并行交叉验证，HTML表格预览，默认2000套批量价比价。version: 8.3.0date: 2026-05-12trigger:  - "帮我查BOM价格"  - "BOM询价"  - "批量查价"  - "查询元器件价格"  - "我要做一个"  - "帮我选型"  - "成本预估"  - "BOM预估"  - "产品成本分析"---
+---name: bom-price-checkerdescription: 从产品需求反推BOM清单（支持经济版/标准版/高性能版多版本对比选择，show_widget可视化表格展示），或直接读取BOM表，按元器件类别分级查询价格（立创BOM批量配单最高优先/双源交叉验证+商城验证/买手全网比价），生成带来源链接的比价单。支持博查AI搜索+IQS/ai/answer并行交叉验证，HTML表格预览，默认2000套批量价比价。version: 8.3.1date: 2026-05-13trigger:  - "帮我查BOM价格"  - "BOM询价"  - "批量查价"  - "查询元器件价格"  - "我要做一个"  - "帮我选型"  - "成本预估"  - "BOM预估"  - "产品成本分析"---
 # BOM 价格查询助手
 ## 你的角色
 你是一个电子元器件采购助手，同时也是一位经验丰富的硬件系统工程师。你拥有两种核心能力：
@@ -22,7 +22,7 @@
 | 2 | **requests 库** | P0 | `python3 -c "import requests"` | 博查/IQS/买手脚本报错 | `pip3 install requests` |
 | 3 | **openpyxl 库** | P0 | `python3 -c "import openpyxl"` | Excel 读写失败 | `pip3 install openpyxl` |
 | 4 | **Playwright MCP** | P1 | `test -f ~/.workbuddy/.mcp.json && grep -q playwright ~/.workbuddy/.mcp.json` | 立创BOM批量配单/网页降级不可用 | 自动写入 `~/.workbuddy/.mcp.json` + 提示用户重启 WorkBuddy |
-| 5 | **Playwright 浏览器** | P1 | `npx @playwright/mcp@latest --version 2>&1` | MCP 配了但浏览器没装 | `npx @playwright/mcp@latest install` |
+| 5 | **本机浏览器可用** | P1 | macOS: `ls /Applications/Google\ Chrome.app /Applications/Microsoft\ Edge.app 2>/dev/null \| head -1`; 都没有则 `npx @playwright/mcp@latest --version 2>&1` 确认 Chromium 已装 | 无可用浏览器（立创BOM配单不可用） | 有 Chrome/Edge → 无需安装；无则 `npx playwright install chromium` |
 | 6 | **博查搜索连通性** | P1 | `python3 scripts/shengsuan_search.py "测试" --json 2>&1 \| head -5` | 博查搜索不可用 | 脚本内置 API Key，失败则提示检查网络 |
 | 7 | **买手搜索连通性** | P1 | `python3 scripts/search_price.py "测试" --json 2>&1 \| head -5` | 买手全网比价不可用 | 脚本内置 API Key，失败则提示检查网络 |
 | 8 | **IQS 搜索连通性** | P1 | `python3 scripts/iqs_search.py "测试" --json 2>&1 \| head -5` | IQS 交叉验证不可用（仅博查单源） | 脚本内置 API Key，额度耗尽提示用户更新 Key |
@@ -124,12 +124,12 @@ AskUserQuestion({
 |--------|---------|------|------|
 | requests | `pip3 install requests` | ~10s | |
 | openpyxl | `pip3 install openpyxl` | ~10s | |
-| Playwright MCP 配置 | Python 脚本写入 `~/.workbuddy/.mcp.json` | ~1s | 见下方配置脚本 |
-| Playwright 浏览器 | `npx @playwright/mcp@latest install` | ~60s | 需下载 Chromium |
+| Playwright MCP 配置 | Python 脚本写入 `~/.workbuddy/.mcp.json` | ~1s | 见下方配置脚本，优先用系统 Chrome |
+| Playwright 浏览器 | 优先复用本机 Chrome/Edge，无则 `npx playwright install chromium` | ~0s/~60s | 有系统浏览器则无需额外安装 |
 
-**Playwright MCP 自动配置脚本**（用 Python 写入 JSON 文件）：
+**Playwright MCP 自动配置脚本**（用 Python 写入 JSON 文件，优先使用系统 Chrome）：
 ```python
-import json, os
+import json, os, subprocess
 
 mcp_path = os.path.expanduser('~/.workbuddy/.mcp.json')
 config = {}
@@ -140,9 +140,28 @@ if os.path.exists(mcp_path):
 if 'mcpServers' not in config:
     config['mcpServers'] = {}
 
+# 检测本机是否有 Chrome 或 Edge（macOS）
+def detect_browser():
+    candidates = [
+        ('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', 'chrome'),
+        ('/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge', 'msedge'),
+    ]
+    for path, name in candidates:
+        if os.path.exists(path):
+            return name
+    return None  # 回退到 Chromium（需单独安装）
+
+browser = detect_browser()
+args = ["@playwright/mcp@latest"]
+if browser:
+    args += ["--browser", browser]
+    print(f"✅ 检测到系统浏览器：{browser}，无需额外安装")
+else:
+    print("⚠️ 未检测到 Chrome/Edge，将使用 Playwright 内置 Chromium（需运行 npx playwright install chromium）")
+
 config['mcpServers']['playwright'] = {
     "command": "npx",
-    "args": ["@playwright/mcp@latest"],
+    "args": args,
     "env": {}
 }
 
@@ -158,6 +177,7 @@ print("⚠️ 请重启 WorkBuddy 让配置生效")
 | 缺失项 | 用户需要做什么 | 引导方式 |
 |--------|--------------|---------|
 | Python 3.11+ | 访问 python.org 安装或 `brew install python3` | 给出具体安装指引链接 |
+| 无可用浏览器（Chrome/Edge/Chromium 均缺） | 运行 `npx playwright install chromium` 安装 Chromium（~100MB），或安装 Google Chrome | 给出命令和下载链接 |
 | IQS API Key 额度耗尽 | 内置 Key 余额不足时提示，用户提供新 Key 后自动更新脚本 | 给出更新命令 |
 
 **API Key 更新**（内置 Key 额度耗尽时，用户提供新 Key 后自动更新）：
