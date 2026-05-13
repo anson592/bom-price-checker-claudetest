@@ -1,4 +1,4 @@
----name: bom-price-checkerdescription: 从产品需求反推BOM清单（支持经济版/标准版/高性能版多版本对比选择，show_widget可视化表格展示），或直接读取BOM表，按元器件类别分级查询价格（立创BOM批量配单最高优先/双源交叉验证+商城验证/买手全网比价），生成带来源链接的比价单。支持博查AI搜索+IQS/ai/answer并行交叉验证，HTML表格预览，默认2000套批量价比价。version: 8.3.1date: 2026-05-13trigger:  - "帮我查BOM价格"  - "BOM询价"  - "批量查价"  - "查询元器件价格"  - "我要做一个"  - "帮我选型"  - "成本预估"  - "BOM预估"  - "产品成本分析"---
+---name: bom-price-checkerdescription: 从产品需求反推BOM清单（支持经济版/标准版/高性能版多版本对比选择，show_widget可视化表格展示），或直接读取BOM表，按元器件类别分级查询价格（立创BOM批量配单最高优先/双源交叉验证+商城验证/买手全网比价），生成带来源链接的比价单。支持博查AI搜索+IQS/ai/answer并行交叉验证，HTML表格预览，默认2000套批量价比价。version: 8.4.0date: 2026-05-13trigger:  - "帮我查BOM价格"  - "BOM询价"  - "批量查价"  - "查询元器件价格"  - "我要做一个"  - "帮我选型"  - "成本预估"  - "BOM预估"  - "产品成本分析"---
 # BOM 价格查询助手
 ## 你的角色
 你是一个电子元器件采购助手，同时也是一位经验丰富的硬件系统工程师。你拥有两种核心能力：
@@ -520,98 +520,98 @@ with open('BOM_反推.csv', 'w', newline='', encoding='utf-8-sig') as f:
 ```
 
 **用户选择后，将选中版本的 BOM 清单交给「第3步：查询价格」进行全网比价。**
----### 第3步：查询价格（按元器件类别分级）
-对每个BOM元器件，先判断类别，再走不同的查询流程。
-#### 元器件分类规则
-| 分类 | 包含 | 查询策略 ||------|------|---------|| **高价值元器件** | MCU/SoC、电源管理IC、通信模块(WiFi/BLE/4G)、传感器芯片、屏幕驱动IC、Camera模组、Flash芯片 | 强查询：四商城（立创→LCSC→华秋→云汉），全失败则买手→经验值 || **低价值元器件** | 阻容感(电阻/电容/电感)、二极管/LED、晶振、连接器、结构件(外壳/电池/按键) | 轻查询：买手全网优先→经验值 |
-**高价值元器件判定标准（满足任一即为高价值）**：- 单颗价格 > ¥2（经验估算）- 属于以下分类之一：MCU、电源、通信模块、传感器、音频IC、显示驱动、摄像头、存储IC
-**低价值元器件判定标准**：- 单颗价格 ≤ ¥2（经验估算）- 属于以下分类之一：阻容感、二极管/三极管、晶振、连接器、结构件
 ---
-#### 高价值元器件：强查询流程
+### 第3步：查询价格（统一流程）
 
-> **重要规则（v8.0.0）**：高价值元器件在完成博查+IQS双源交叉验证后，**强制进行 WebFetch 商城链接验证**，不跳过。
-> 即便两源一致、即便有参考价格，也要验证商城实时价，确保核心元器件的价格准确性。
+> **v8.4.0 策略精简**：不再区分高/低价值元器件，所有元器件统一走同一套查询流程。移除了逐商城爬取（立创单搜/LCSC/华秋/云汉）和反爬策略，大幅提升查询效率。
 
-> **核心规则（v8.2.0）**：高价值元器件查询**最高优先级**为立创商城 BOM 批量配单（需已登录），次优先级为博查+IQS双源交叉验证。
-> 立创 BOM 批量配单可一次性获取立创实时价格（含2000+档位），是最权威的立创价格来源。
-> 如果立创未登录或 Cookie 失效，降级到博查+IQS双源交叉验证 + WebFetch 商城验证。
-
-对每颗高价值元器件，执行以下流程：
+#### 查询流程总览
 
 ```
-对每颗高价值元器件：
+所有元器件（统一流程）：
 
-  ★ ① 立创商城 BOM 批量配单（最高优先，需已登录）
-     → Cookie存在 → 执行配单
-     → Cookie不存在 → 提示用户登录立创商城 → 降级到步骤②
+  Step 0: 立创BOM批量配单（★最高优先）
+    ├─ Cookie 在 + Playwright 成功 → 采纳立创配单价（最权威）
+    ├─ Cookie 不在 → 弹窗引导登录 → 登录后重试
+    └─ 失败/跳过 → 降级到 Step 1
 
-  ② 博查 + IQS /ai/answer 并行查询（--cross-verify 模式）
-     调用: python3 scripts/iqs_search.py '{型号} 价格 批量' --cross-verify --json
-     ↓ 并行执行，总耗时取 max（博查~7s / IQS~11s）
+  Step 1: 博查 + IQS 并行查询（~11s）
+    ├─ 都有结果 → 交叉对比（一致/独有/存疑）
+    ├─ 只有一个有 → 记录
+    └─ 都没有 → 跳到 Step 3
 
-  ③ 交叉验证结果处理（记录为参考，不作为最终采纳依据）：
-     a) 两源一致（价差 < 20%）→ 记录为参考价格，标注"交叉验证一致参考" ✅
-     b) IQS 独有价格 → 补充记录，标注"IQS补充"
-     c) 博查独有价格 → 记录，标注"博查搜索"（待验证）
-     d) 两源存疑（价差 ≥ 20%）→ 标注"存疑"，作为优先验证项
-     e) 两源均无结果 → 进入降级流程（步骤④）
+  Step 2: 可选 WebFetch 验证（仅一次尝试）
+    ├─ 博查/IQS 返回了商城链接（立创/华秋/云汉/LCSC）
+    │   ├─ WebFetch 成功 → market_source = 商城名 + URL（白名单链接）
+    │   └─ WebFetch 失败 → 用搜索结果价，market_source = "博查搜索"/"IQS"/"博查+IQS"
+    └─ 无商城链接 → 跳过，直接用搜索结果价
 
-  ④ ★ WebFetch 商城链接验证（高价值元器件强制执行）
-     ↓ 从博查/IQS 返回的商城链接中，按优先级筛选：
-         优先级1：立创商城链接（szlcsc.com）
-         优先级2：华秋商城链接（hqchip.com）
-         优先级3：云汉芯城链接（ickey.cn）
-         优先级4：LCSC国际站链接（lcsc.com）
-       → 按优先级逐个 WebFetch，有一个成功即停止
-       → 验证结果处理：
-           WebFetch 成功 + 价格差异 < 10% → 采纳搜索价格，标注"已验证✅"
-           WebFetch 成功 + 价格差异 ≥ 10% → 采纳商城实时价，标注"已更新🔄"
-           WebFetch 成功 + 有存疑标记 → 优先采纳商城价，标注"已验证✅（商城实时）"
-           WebFetch 全部失败 → 保留步骤②价格，标注"未验证⚠️"
-
-     ↓ 如果④全失败（403/超时/无数据），进入降级
-
-  ⑤ 立创商城（WebFetch → Playwright MCP 降级）
-     ↓ 失败（403 / 超时 / 无数据）
-
-  ⑥ LCSC 国际站（WebFetch）
-     ↓ 失败
-
-  ⑦ 买手全网比价
-     ↓ 失败
-
-  ⑧ 经验估算（标注"经验估算，未经商城验证"）
+  Step 3: 买手全网查询（所有元器件必查）
+    ├─ 有结果 → price_ecommerce = 最低含券价
+    └─ 无结果 → price_ecommerce = null（HTML 显示 "-"）
 ```
 
----
-##### 来源0：立创商城 BOM 批量配单（★最高优先）
+#### Step 0: 立创BOM批量配单（★最高优先）
 
-> **这是高价值元器件的查询入口**。通过 Playwright MCP 恢复用户立创商城登录态，批量提交 BOM 配单，可一次性获取立创实时阶梯价格（含2000+档位），无需逐型号搜索。
+> **一次性批量提交所有型号**，获取立创实时阶梯价格（含2000+档位），是最权威的商城确认价来源。
 
 **前置条件**：
-- ✅ Playwright MCP 已配置（见上方 MCP 配置指引）
-- ✅ 用户拥有立创商城账号
-- ✅ 立创商城 Cookie 已保存到 `~/.workbuddy/skills/bom-price-checker/data/lcsc_cookies.json`
+- Playwright MCP 已配置（Phase 0 检查项）
+- 用户拥有立创商城账号
+- Cookie 已保存到 `~/.workbuddy/skills/bom-price-checker/data/lcsc_cookies.json`
 
-**Cookie 保存方法**：
-首次使用后，Cookie 会自动保存在上述路径，后续查询直接复用。如果 Cookie 文件不存在或为空，脚本会提示用户手动登录并保存。
+**流程**：
 
-**核心优势**：
-- 🔓 **实时价格**：直接获取立创商城后台实时数据，含2000+批量档位
-- 📦 **库存状态**：实时反映立创当前库存是否充足
-- 🤖 **自动化**：批量提交 BOM，一次查询多颗元器件
-- 🔐 **需登录**：价格数据与用户账号绑定，避免反爬拦截
+```
+检查 Cookie
+  ├─ Cookie 存在 → Playwright MCP 批量配单
+  │   ├─ 成功 → 采纳立创配单价 + 链接 → market_source="立创商城"
+  │   └─ 失败（403/Cookie过期） → 弹窗引导重新登录 → 重试
+  │       └─ 重试失败 → 跳到 Step 1
+  └─ Cookie 不存在
+      ├─ AskUserQuestion 弹窗引导用户登录立创商城
+      │   ├─ 用户登录完成 → 保存 Cookie → Playwright 配单
+      │   │   ├─ 成功 → 采纳
+      │   │   └─ 失败 → 跳到 Step 1
+      │   └─ 用户选择跳过 → 跳到 Step 1
+```
+
+**登录引导弹窗（主动触发）**：
+
+使用 AskUserQuestion 工具弹窗，文案如下：
+
+```
+立创商城尚未登录，是否现在登录以获取最权威的实时价格？
+如需登录，请：
+1. 在浏览器中访问 https://www.szlcsc.com/ 完成登录
+2. 登录完成后告诉我，我会自动保存 Cookie 并继续查询
+```
+
+选项：
+- 「我已登录」 → 保存 Cookie → 继续配单
+- 「跳过，继续查询」 → 降级到 Step 1
+
+**Cookie 保存与恢复**（方案B，已验证）：
+
+```javascript
+// 使用 page.context().addCookies() 恢复登录态
+await page.context().addCookies([
+  {name: 'customerCode', value: '...', domain: 'www.jlc.com', path: '/'},
+  {name: 'isLoginCustomerFlag', value: '...', domain: '.szlcsc.com', path: '/'},
+  // ... 其他关键 Cookie
+]);
+
+// 绕过 ACL：从主页导航进入 BOM 页面，不要直接访问
+await page.goto('https://www.szlcsc.com/', { waitUntil: 'networkidle' });
+await page.goto('https://bom.szlcsc.com/bom.html?from=dh', { waitUntil: 'networkidle' });
+```
 
 **操作流程**：
 
 ```
 Step 1：检查 Cookie 是否存在
   → 读取 ~/.workbuddy/skills/bom-price-checker/data/lcsc_cookies.json
-  → 如果不存在或为空：
-       【被动提示】"立创商城尚未登录，部分元器件可能无法查到最优惠价格。
-                   如需使用立创BOM批量配单（最高优先级），请在立创商城完成一次登录，
-                   然后重新执行查询。"
-       → 不阻塞流程，降级到步骤②（博查+IQS）
+  → 如果不存在或为空 → 弹窗引导登录
 
 Step 2：加载 Cookie 并建立浏览器上下文
   → 读取 Cookie 文件
@@ -648,7 +648,7 @@ if (fs.existsSync(cookiePath)) {
 }
 
 if (cookies.length === 0) {
-  // 通知主流程：未登录，降级
+  // 通知主流程：未登录，弹窗引导登录
   return { status: 'NO_COOKIES', message: '立创商城未登录，请先登录' };
 }
 
@@ -697,229 +697,513 @@ return { status: 'OK', prices };
 ]
 ```
 
-**登录提示文案（被动触发，不阻塞流程）**：
-```
-⚠️ 立创商城尚未登录
-BOM 价格查询将使用次优先级方案（博查+IQS双源搜索）。
-如需启用最高优先级的立创BOM批量配单，请：
-1. 访问立创商城官网完成一次登录（https://www.szlcsc.com/）
-2. 登录后重新执行查询
-登录后 Cookie 将自动保存，后续无需重复登录。
-```
-
-**登录引导触发条件**：
-- Cookie 文件不存在
-- Cookie 文件为空数组
-- Playwright 访问 BOM 页面后检测到登录墙（页面包含"登录"关键字）
-
 **注意事项**：
 - Cookie 有效期通常为 7-30 天，过期后需重新登录
 - Cookie 注入了但仍跳转登录页，说明 Cookie 已过期，需重新登录
+- Step 0 成功的元器件**仍然需要查买手全网**（Step 3），以获取电商对比价
+- Step 0 成功的元器件跳过 Step 1 和 Step 2
 
----> **设计说明**：
-> - 高价值元器件（>¥2）必须经过商城实时价格验证，确保采购决策的准确性
-> - 博查+IQS 交叉验证的目的是**提供参考价格和商城链接**，而非最终采纳价格
-> - WebFetch 验证是**强制步骤**，即使两源完全一致也要执行
-> - 中等价值元器件（¥0.5-2）可跳过强制验证，仅在存疑时验证
-> - 每颗元器件查询完毕后，**随机等待 2~5 秒**，再查询下一颗（避免触发 IP 频率限制）
 ---
-##### 来源1：立创商城 单型号搜索（降级方案）
+#### Step 1: 博查 + IQS 并行查询
 
-> **注意**：此来源为步骤⑤的降级方案。当来源0（BOM批量配单）Cookie缺失、失效或失败时使用。
-> BOM批量配单无需逐型号搜索，是更高效的查询方式。
+> Step 0 失败或跳过后，对所有尚未获取商城确认价的元器件执行双源并行查询。
 
-- **方法**：优先 WebFetch，失败则用 Playwright MCP 降级
-- **无需登录**，价格公开
-- **搜索 URL**：`https://www.szlcsc.com/products/search?keyword={model}`
-- **优先提取 2000+ 档位价格**
-**WebFetch 方式**（首选）：```pythonresult = WebFetch(    url=f'https://www.szlcsc.com/products/search?keyword={model}',    prompt='提取页面中的所有型号、价格阶梯（特别是2000+档位）、库存信息，以及每个型号的商品详情页链接')```
-**Playwright MCP 方式**（WebFetch 失败时降级使用）：```javascriptawait page.goto(`https://www.szlcsc.com/products/search?keyword=${model}`);await page.waitForLoadState('networkidle');await page.waitForTimeout(2000);
-const results = await page.evaluate(() => {  const items = [];  document.querySelectorAll('.product-item, [class*="product"]').forEach(item => {    const title = item.querySelector('.product-title, [class*="title"]')?.innerText || '';    const price = item.querySelector('.product-price, [class*="price"]')?.innerText || '';    const link = item.querySelector('a')?.href || '';    items.push({ title, price, link });  });  return items;});```
-**失败判定**：返回 403、超时、或返回内容中无价格数据。
----
-##### 来源2：LCSC 国际站 (lcsc.com)
-- **方法**：WebFetch（推荐），或 curl 调用无认证搜索 API- **无需登录**，价格公开- **货币**：USD（按 7.25 换算为 CNY）- **搜索 URL**：`https://www.lcsc.com/products?q={model}`- **优先提取 2000+ 档位价格**
-**WebFetch 方式**（推荐）：```pythonresult = WebFetch(    url=f'https://www.lcsc.com/products?q={model}',    prompt='Extract all price tiers especially 2000+ price in USD, product detail page URL, and convert USD to CNY using rate 7.25')```
-**备用：LCSC 无认证搜索 API**（返回 JSON，包含商品页面 URL）：```bashcurl -s "https://lcsc.com/api/global/additional/search?q={model}"```解析返回的 JSON，获取商品详情页 URL 后，再用 WebFetch 访问详情页提取阶梯价。
-**注意**：- 国际站与立创商城（szlcsc.com）的库存和价格可能不同- 如果 curl 返回的 JSON 中包含商品详情页链接，优先访问详情页获取完整阶梯价
----
-##### 来源3：华秋商城 (hqchip.com)
-- **方法**：优先 WebFetch，失败则用 Playwright MCP 降级- **无需登录**即可看到阶梯价和库存- **搜索 URL**：`https://www.hqchip.com/search/{model}.html`- **优先提取 2000+ 档位价格**
-**WebFetch 方式**（首选）：```pythonresult = WebFetch(    url=f'https://www.hqchip.com/search/{model}.html',    prompt='提取搜索结果中的型号、阶梯价格（特别是2000+档位）、库存信息，以及商品详情页链接')```
-**Playwright MCP 方式**（WebFetch 失败时降级使用）：```javascriptawait page.goto(`https://www.hqchip.com/search/${model}.html`);await page.waitForLoadState('networkidle');await page.waitForTimeout(2000);
-const results = await page.evaluate(() => {  const items = [];  document.querySelectorAll('.goods-list-item, [class*="search-result"]').forEach(card => {    const title = card.querySelector('.goods-title, [class*="title"]')?.innerText || '';    const priceText = card.innerText;    const link = card.querySelector('a')?.href || '';    items.push({ title, priceText, link });  });  return items;});```
----
-##### 来源4：云汉芯城 (ickey.cn)
-- **方法**：优先 WebFetch，失败则用 Playwright MCP 降级- **无需登录**即可看到完整阶梯价- **搜索 URL**：`https://search.ickey.cn/yuncang/search/index?keyword={model}`- **优先提取 2000+ 档位价格**
-**WebFetch 方式**（首选）：```pythonresult = WebFetch(    url=f'https://search.ickey.cn/yuncang/search/index?keyword={model}',    prompt='提取搜索结果中的型号、阶梯价格（特别是2000+档位）、库存数量，以及商品详情页链接')```
-**Playwright MCP 方式**（WebFetch 失败时降级使用）：```javascriptawait page.goto(`https://search.ickey.cn/yuncang/search/index?keyword=${model}`);await page.waitForLoadState('networkidle');await page.waitForTimeout(3000);
-const results = await page.evaluate(() => {  const items = [];  document.querySelectorAll('[class*="product-item"], [class*="goods-item"]').forEach(card => {    const priceItems = card.querySelectorAll('li');    const prices = [];    priceItems.forEach(li => {      const text = li.innerText.trim();      const match = text.match(/^(\d+)\+\s*￥([\d.]+)$/);      if (match) {        prices.push({ qty: match[1] + '+', price: match[2] });      }    });    const link = card.querySelector('a')?.href || '';    items.push({ prices, link });  });  return items;});```
-**如果 MCP 未配置或启动失败**：- 跳过云汉芯城- 记录为"MCP 未配置，已跳过"
----
-##### 来源5：买手全网比价（兜底）
-- **方法**：调用买手搜索（内置脚本） 脚本- **适用场景**：博查搜索也未获取到价格时的进一步兜底- **特别适合**：模块类（4G 模块、GPS 模块）、消费级电子元件
-**调用方式**：```bashpython3 scripts/search_price.py --keyword='{型号}'```
-**参数说明**：- `--source=0`：搜索全部平台（淘宝、京东、拼多多、1688 等）- `--keyword='{型号}'`：要搜索的型号或关键词
-**返回格式**：CSV，包含以下字段：- `actualPrice`：实际价格（含优惠券）- `source`：来源平台（1=淘宝，2=京东，3=拼多多，10=1688）- `title`：商品标题- `shopName`：店铺名称
-**处理逻辑**：1. 运行命令，获取 CSV 结果2. 解析 CSV，提取所有商品的实际价格（actualPrice）3. 取所有平台的最低实际价格作为"买手全网最低价"4. 如果返回空或报错，记录为"未获取到"，继续下一来源
----
-##### 来源6：博查AI搜索（胜算云联网搜索）
-> **这是 4 个商城全部反爬失败后的首选降级方案，比买手更高效。**
-- **方法**：调用 `scripts/shengsuan_search.py` 脚本- **原理**：通过胜算云 API 联网搜索，让 AI 大模型自动搜索并提取各平台价格- **搜索引擎**：博查AI搜索（中文优化，覆盖国内商城）- **一次搜索覆盖**：华秋、1688、维库电子市场网等多个平台- **返回结构化数据**：价格 + 档位 + 来源平台 + 商品链接- **已验证**：华秋商城链接可正常打开，价格与商城一致
-**调用方式**：```bash# 博查AI搜索（默认，推荐）python3 scripts/shengsuan_search.py '{型号} 价格' --json
-# 深度搜索（覆盖更多渠道，包括 Mouser、DigiKey 等）python3 scripts/shengsuan_search.py '{型号} 价格' --depth advanced --json
-# 自动模式（博查无结果自动降级 Tavily 全球搜索）python3 scripts/shengsuan_search.py '{型号} 价格' --engine auto --json```
-**返回格式**：JSON，核心字段：- `parsed_prices`：解析后的价格数组  - `source`：来源平台名称  - `price`：单价（数字）  - `quantity`：数量档位  - `currency`：货币（CNY/USD）  - `link`：来源链接  - `note`：备注- `search_results`：搜索引擎返回的原始网页摘要（可用于补充参考）
-**处理逻辑**：1. 运行脚本，获取 JSON 结果2. 从 `parsed_prices` 中提取所有价格记录3. 按 `quantity` 档位筛选最接近目标批量（默认2000+）的价格4. 在比价表中标注来源为"博查搜索"5. 保留来源链接，用户可点击跳转验证6. 如果返回空或失败，记录为"未获取到"，继续下一来源
-**注意事项**：- 价格来自搜索引擎缓存，可能与商城实时价有轻微时间差- 偶尔出现型号混淆，人工复核时需注意- 标注为"博查搜索"以区别于直接商城查询- 费用：0.036¥/次（博查）
----
-##### 来源7：买手全网比价（兜底）
-- **当以上所有来源均失败时**，使用 AI 经验估算价格- **必须标注**：`经验估算（未经商城验证）`- **估算参考值**：
-| 分类 | 经验价格范围 ||------|-------------|| 电阻(0805/0603) | ¥0.01 ~ 0.03/颗 || 电容(0805/0603) | ¥0.02 ~ 0.08/颗 || 电感 | ¥0.05 ~ 0.20/颗 || 二极管/LED | ¥0.05 ~ 0.50/颗 || 晶振 | ¥0.30 ~ 1.50/颗 || 连接器 | ¥0.10 ~ 2.00/颗 || MCU（如STM32F103） | ¥3 ~ 15/颗 || 电源IC（如AMS1117） | ¥0.50 ~ 3.00/颗 || 传感器（如MPU-6050） | ¥2 ~ 15/颗 || 通信模块（如ESP32） | ¥8 ~ 35/颗 |
----
-#### 低价值元器件：轻查询流程
-对每颗低价值元器件，按顺序尝试：
+**调用方式**：
 
-```对每颗低价值元器件：
-  1. 买手全网比价     ↓ 失败或无结果  2. 经验估算（标注"经验值，未查商城"）```
-**买手调用方式**与高价值元器件相同。
-**经验估算直接给出**，无需再查商城（低价值元器件查商城的投入产出比低）。
+```bash
+# 博查AI搜索（胜算云）
+python3 scripts/shengsuan_search.py '{型号} 价格' --json
+
+# IQS 搜索（阿里云）
+python3 scripts/iqs_search.py '{型号} 价格' --json
+
+# 或者使用 cross-verify 模式（博查+IQS 一条命令并行）
+python3 scripts/iqs_search.py '{型号} 价格 批量' --cross-verify --json
+```
+
+**交叉验证结果处理**：
+
+| 场景 | 处理方式 | market_source 填写 |
+|------|----------|-------------------|
+| 两源一致（价差 < 20%） | 取较低值或平均值 | "博查+IQS" |
+| IQS 独有 | 记录 IQS 价格 | "IQS搜索" |
+| 博查独有 | 记录博查价格 | "博查搜索" |
+| 存疑（价差 ≥ 20%） | 取较低值，标注存疑 | "博查+IQS"（备注中标明双方价格） |
+| 两源均无 | 跳到 Step 3 | 空 |
+
+**博查返回格式**（JSON）：
+- `parsed_prices`：价格数组（source / price / quantity / currency / link / note）
+- `search_results`：搜索引擎返回的原始网页摘要
+
+**IQS 返回格式**（JSON）：
+- `parsed_prices`：同上
+- `raw_answer`：AI 大模型返回的原始回答
+
+**费用**：博查 0.036¥/次，IQS 按内置 Key 额度消耗。
+
 ---
-#### 反爬策略
-##### 策略1：请求间随机延迟
-**每颗元器件查询完毕后，随机等待 2~5 秒，再查询下一颗元器件。**
-```pythonimport random, timetime.sleep(random.uniform(2, 5))```
-##### 策略2：商城交错查询
-**不要连续查同一个商城**，而是将 BOM 清单打散，四个商城轮流查询：
-```BOM 清单：[MCU, 传感器, 电源IC, 电容, 电阻, 通信模块]
-查询顺序（交错）：
-  元器件1 → 立创  元器件1 → LCSC（如果立创失败）  元器件1 → 华秋（如果LCSC失败）  ...  元器件2 → 立创  元器件2 → LCSC  ...```
-实现方式：先对每颗元器件尝试立创，全部完成后，再对失败的尝试 LCSC，以此类推。
-##### 策略3：WebFetch 失败后用 Playwright MCP 重试
-```对每个商城：
-  1. 先用 WebFetch 尝试（轻量快速）     ├── 成功 → 记录价格和链接     └── 失败 → 随机等 3~8 秒 → 用 Playwright MCP 重试           ├── 成功 → 记录价格和链接           └── 也失败 → 标记"被反爬限制" → 下一个商城```
-##### 策略4：截图识别降级（可选，仅高价值元器件）
-当 Playwright MCP 能打开页面但无法提取结构化数据时，截图让大模型识别：
-```javascriptawait page.screenshot({ path: '/tmp/price_screenshot.png' });// 然后将截图交给大模型识别价格```
-**注意**：- 仅对**高价值元器件**使用截图识别（值得花 token）- 低价值元器件不截图，直接经验估算- 截图识别失败不重试，直接降级
-##### 策略5：连续失败后的暂停
-| 情况 | 处理方式 ||------|---------|| 单次 403 | 跳过该商城，继续下一个，记录"被反爬限制" || 连续 2 个商城 403 | 暂停 10 秒，然后用 Playwright 重试 || 4 个商城全 403 | 优先降级到**博查+IQS双源交叉验证**，再买手 + 经验值 |
+#### Step 2: 可选 WebFetch 验证（仅一次尝试）
+
+> 仅当博查或 IQS 返回的链接指向**确认商城**（立创/华秋/云汉/LCSC）时，才尝试一次 WebFetch 验证。
+> **不逐个爬商城**，不重试，失败就用搜索结果价。
+
+**验证条件**：博查/IQS 返回的 `link` 域名包含以下关键词之一：
+- `szlcsc.com`（立创商城）
+- `hqchip.com`（华秋商城）
+- `ickey.cn`（云汉芯城）
+- `lcsc.com`（LCSC 国际站）
+
+**验证流程**：
+
+```python
+# 如果博查或 IQS 返回了商城链接
+if has_shop_link:
+    result = WebFetch(
+        url=shop_link,
+        prompt='提取页面中的型号、2000+档位价格、商品详情页链接'
+    )
+    if result and '价格' in result:
+        # 验证成功 → market_source 填商城名（白名单关键词）
+        market_source = "立创商城" / "华秋商城" / "云汉芯城" / "LCSC国际站"
+        market_url = detail_page_link  # 商品详情页链接
+    else:
+        # 验证失败 → 保持搜索来源，不重试
+        pass
+```
+
+**不验证的情况**：
+- 博查/IQS 返回的链接指向 1688、淘宝等非确认商城 → 跳过
+- 博查/IQS 没有返回链接 → 跳过
+- WebFetch 返回 403 / 超时 / 无价格数据 → 跳过，不降级到逐个爬商城
+
+---
+#### Step 3: 买手全网查询（所有元器件必查）
+
+> 不管前面的步骤有没有查到商城价，**所有元器件都要查买手全网**，以获取电商对比价。
+
+**调用方式**：
+
+```bash
+python3 scripts/search_price.py --keyword='{型号}' --source=0
+```
+
+**参数说明**：
+- `--source=0`：搜索全部平台（淘宝、京东、拼多多、1688 等）
+- `--keyword='{型号}'`：要搜索的型号或关键词
+- `--json`：JSON 格式输出（可选）
+
+**返回格式**：CSV/JSON，核心字段：
+- `actualPrice`：实际价格（含优惠券）
+- `source`/`sourceType`：来源平台
+- `title`：商品标题
+- `shopName`：店铺名称
+
+**处理逻辑**：
+1. 运行命令，获取结果
+2. 提取所有平台的最低 `actualPrice` → `price_ecommerce`
+3. 无结果或报错 → `price_ecommerce = null`（HTML 显示 "-"）
+
+---
+#### 经验估算（所有来源均失败时的兜底）
+
+当 Step 0~3 全部没有查到任何价格时，使用经验估算：
+
+| 分类 | 经验价格范围 |
+|------|-------------|
+| 电阻(0805/0603) | ¥0.01 ~ 0.03/颗 |
+| 电容(0805/0603) | ¥0.02 ~ 0.08/颗 |
+| 电感 | ¥0.05 ~ 0.20/颗 |
+| 二极管/LED | ¥0.05 ~ 0.50/颗 |
+| 晶振 | ¥0.30 ~ 1.50/颗 |
+| 连接器 | ¥0.10 ~ 2.00/颗 |
+| MCU（如STM32F103） | ¥3 ~ 15/颗 |
+| 电源IC（如AMS1117） | ¥0.50 ~ 3.00/颗 |
+| 传感器（如MPU-6050） | ¥2 ~ 15/颗 |
+| 通信模块（如ESP32） | ¥8 ~ 35/颗 |
+
+必须标注：`found = false`，`price_estimated_experience` 填入经验值。
+
 ---
 #### 价格结果标注规则
-每个元器件的价格数据必须标注来源和可跳转链接：
 
-|
-| **立创BOM批量配单** | `立创BOM ¥X.XX ✅（实时） ↗` | `立创BOM ¥8.68 ✅（实时） ↗` |
-| 双源验证一致 | `交叉验证 ¥X.XX ✅（博查+IQS） ↗` | `交叉验证 ¥1.23 ✅（博查+IQS） ↗` |
-| IQS补充 | `IQS补充 ¥X.XX ↗` | `IQS补充 ¥6.64 ↗` |
-| 存疑（价差>20%） | `存疑 ¥X.XX ⚠️（博查¥A/IQS¥B） ↗` | `存疑 ¥1.20 ⚠️（博查¥1.00/IQS¥1.50） ↗` |
-| 博查搜索（已验证） | `博查 ¥X.XX ✅ ↗`（链接指向验证成功的商城页） | `博查 ¥1.23 ✅ ↗` |
-| 博查搜索（已更新） | `博查 ¥X.XX 🔄 ↗`（价格已用实时价替换） | `博查 ¥1.20 🔄 ↗` |
-| 博查搜索（未验证） | `博查 ¥X.XX ⚠️ ↗`（链接为博查返回的原始链接） | `博查 ¥1.25 ⚠️ ↗` |
-| 立创商城 | `立创 ¥X.XX ↗`（`↗` 为可跳转链接） | `立创 ¥1.23 ↗` |
-| LCSC 国际站 | `LCSC $X.XX (¥XX.XX) ↗` | `LCSC $0.17 (¥1.23) ↗` |
-| 华秋商城 | `华秋 ¥X.XX ↗` | `华秋 ¥1.20 ↗` |
-| 云汉芯城 | `云汉 ¥X.XX ↗` | `云汉 ¥1.25 ↗` |
-| 买手全网 | `买手最低 ¥X.XX（来源：淘宝/京东/...）` | `买手最低 ¥1.15（来源：淘宝）` |
-| 经验估算 | `经验估算 ¥X.XX（未经商城验证）` | `经验估算 ¥1.50（未经商城验证）` |**HTML 输出时**，`↗` 用 `<a>` 标签实现跳转。
+每个元器件的价格数据标注来源和验证状态：
+
+| 来源场景 | 标注格式 | 示例 |
+|---------|---------|------|
+| 立创BOM批量配单 | `立创BOM ¥X.XX ↗` | `立创BOM ¥8.68 ↗` |
+| 博查+IQS一致 + WebFetch验证商城 | `{商城名} ¥X.XX ↗` | `华秋商城 ¥5.20 ↗` |
+| 博查+IQS一致（未验证商城） | `博查+IQS ¥X.XX` | `博查+IQS ¥8.50` |
+| IQS独有 + WebFetch验证商城 | `{商城名} ¥X.XX ↗` | `华秋商城 ¥5.20 ↗` |
+| IQS独有（未验证） | `IQS ¥X.XX` | `IQS ¥6.64` |
+| 博查独有（未验证） | `博查 ¥X.XX` | `博查 ¥1.23` |
+| 存疑（价差>20%） | `存疑 ¥X.XX（博查¥A/IQS¥B）` | `存疑 ¥5.20（博查¥8.50/IQS¥5.20）` |
+| 买手全网 | `买手 ¥X.XX（来源：平台名）` | `买手 ¥1.15（拼多多）` |
+| 经验估算 | `经验估算 ¥X.XX` | `经验估算 ¥0.01` |
+
+**HTML 输出时**，`↗` 仅在 `market_source` 含白名单关键词（立创/华秋/云汉/LCSC）且 `market_url` 有值时用 `<a>` 标签实现可点击链接。其他情况显示纯文字。
+
+**备注（note）字段规则**：
+
+| 场景 | note 内容 |
+|------|----------|
+| 立创BOM成功 | "立创BOM批量配单（实时）" |
+| 博查+IQS一致，WebFetch确认商城 | "博查+IQS交叉验证，WebFetch确认{商城名}" |
+| 博查+IQS一致，未验证商城 | "博查+IQS交叉验证（未经商城确认）" |
+| 博查独有 | "博查搜索" |
+| IQS独有 | "IQS搜索" |
+| 存疑 | "存疑：博查¥X / IQS¥Y" |
+| 全都没搜到 | "经验估算（未经验证）" |
+
 ---
-路径B 完成后，将 BOM 清单交给「第4步：统一比价」。路径A（用户上传 BOM 表）也遵循相同的查询策略。
----### 第4步：统一比价
-所有来源查询完成后，对每个型号：
+路径B 完成后，将 BOM 清单交给「第4步：数据映射」。路径A（用户上传 BOM 表）也遵循相同的查询策略。
+---
+### 第4步：数据映射与组装
 
-#### 4.1 提取各平台的 2000+ 档位价格
-1. **如果用户没有修改数量**，默认按 2000+ 档位比价2. **如果用户修改了数量**（如"我要100套的价格"），则提取对应档位3. **提取逻辑**：   - 立创商城：查找"2000+"档位的单价，并记录商品详情页链接   - 华秋商城：查找"2000+"档位的单价，并记录商品详情页链接   - 云汉芯城：查找"2000+"档位的单价，并记录商品详情页链接   - LCSC 国际站：查找"2000+"档位的单价（USD，需换算），并记录商品详情页链接   - 买手全网：取所有平台的最低实际价格
+所有元器件查询完成后，将多源比价结果映射为标准 JSON 格式，供报告生成管线使用。
+
+#### 4.1 6 字段映射规则
+
+每颗元器件查询完成后，按以下规则映射为输入 JSON 字段：
+
+**① `price_market`（商城价）= 最可靠的搜索价格**
+
+```
+优先级: 立创BOM配单价 > WebFetch验证商城价 > 博查/IQS搜索价
+price_market = 上述来源中的最低价
+```
+
+- 所有来源均无结果 → `price_market = null`
+- 立创BOM批量配单的价格直接采纳（最权威）
+
+**② `market_source`（商城价来源描述）**
+
+```
+根据实际获取渠道填写:
+  → "立创商城"    （立创BOM批量配单 或 WebFetch 验证立创）
+  → "华秋商城"    （WebFetch 验证华秋）
+  → "云汉芯城"    （WebFetch 验证云汉）
+  → "LCSC国际站"  （WebFetch 验证 LCSC）
+  → "博查+IQS"    （双源搜索，未经商城验证）
+  → "博查搜索"    （仅博查有结果）
+  → "IQS搜索"     （仅 IQS 有结果）
+  → ""            （全都没搜到）
+```
+
+**③ `market_url`（商城确认链接）**
+
+```
+仅确认商城（立创/华秋/云汉/LCSC）且验证成功时才填 URL
+其他来源一律留空字符串 ""
+```
+
+**④ `price_ecommerce`（电商价）= 买手全网最低含券价**
+
+```
+price_ecommerce = 买手全网搜索结果中的最低 actualPrice
+买手无结果 → price_ecommerce = null
+```
+
+**⑤ `found`（是否搜到真实价格）**
+
+```
+found = true  → price_market 或 price_ecommerce 至少一个非 null
+found = false → 两者都为 null，只有经验估算
+```
+
+**⑥ `price_estimated_experience`（经验估算价，仅 found=false 时需要）**
+
+```
+found=false 时必须填，参考上方经验估算参考值表
+```
+
+**映射示例**：
+
+```
+场景A: 立创BOM配单成功 + 买手有结果
+  price_market: 8.68
+  market_source: "立创商城"
+  market_url: "https://bom.szlcsc.com/..."
+  price_ecommerce: 10.20
+  found: true
+
+场景B: 博查+IQS一致 + WebFetch验证华秋 + 买手有结果
+  price_market: 5.20
+  market_source: "华秋商城"
+  market_url: "https://www.hqchip.com/product/xxx"
+  price_ecommerce: 8.80
+  found: true
+
+场景C: 仅博查有结果 + WebFetch失败 + 买手无结果
+  price_market: 0.45
+  market_source: "博查搜索"
+  market_url: ""
+  price_ecommerce: null
+  found: true
+
+场景D: 全部无结果
+  price_market: null
+  market_source: ""
+  market_url: ""
+  price_ecommerce: null
+  found: false
+  price_estimated_experience: 0.01
+```
+
 #### 4.2 库存不足的处理
-**重要**：如果 2000+ 档位库存不足，取最低可用档位的价格。
-**原因**：我们只是预估价格，不需要严格匹配库存。
-**处理逻辑**：```pythondef get_best_price(prices, target_qty=2000):    """    获取最合适的价格    prices: 列表，每个元素是 {'qty': '2000+', 'price': 1.23, 'link': 'https://...'}    target_qty: 目标数量，默认 2000    """    # 1. 先找完全匹配的档位    for p in prices:        qty = parse_quantity(p['qty'])  # 解析 "2000+" -> 2000        if qty >= target_qty:            return p['price'], p['qty'], p.get('link', '')        # 2. 如果找不到匹配的档位，取最大的档位    if prices:        max_price = max(prices, key=lambda x: parse_quantity(x['qty']))        return max_price['price'], max_price['qty'] + ' (库存不足，取最低可用档位)', max_price.get('link', '')        # 3. 如果都没有，返回 None    return None, None, ''```
-#### 4.3 标注最低价来源
-1. **比较所有来源的价格**（立创、华秋、云汉、LCSC、买手）2. **标注最低价的平台和价格**，并附上来源链接3. **如果价格相同**，标注所有最低价来源（如"立创商城、华秋商城"）
-**处理逻辑**：```pythondef compare_prices(prices_dict):    """    比较各平台价格，标注最低价来源    prices_dict: {        '立创商城': {'price': 1.23, 'link': 'https://...'},        '华秋商城': {'price': 1.20, 'link': 'https://...'},        '云汉芯城': {'price': 1.25, 'link': 'https://...'},        'LCSC国际站': {'price': 1.22, 'link': 'https://...'},        '买手全网': {'price': 1.15, 'link': None}    }    """    # 过滤掉 None 和 0    valid_prices = {k: v for k, v in prices_dict.items() if v and v['price'] and v['price'] > 0}        if not valid_prices:        return None, "所有来源均未获取到价格", []        min_price = min(valid_prices.values(), key=lambda x: x['price'])    min_sources = [k for k, v in valid_prices.items() if v['price'] == min_price['price']]        # 收集所有最低价来源的链接    min_links = [valid_prices[s]['link'] for s in min_sources if valid_prices[s].get('link')]        return min_price['price'], ', '.join(min_sources), min_links```
----### 第5步：输出结果
-#### 5.1 HTML 预览（优先）
-生成 HTML 表格，用 `preview_url` 工具在 WorkBuddy 窗口展示。
-**表格列**：1. **序号**（1, 2, 3...）2. **型号**（如 STM32F103C8T6）3. **封装**（如 LQFP-48）4. **数量**（如 2000）5. **品牌**（如 ST）6. **立创价格（¥）**（如 1.23 ↗，点击可跳转）7. **华秋价格（¥）**（如 1.20 ↗，点击可跳转）8. **云汉价格（¥）**（如 1.25 ↗，点击可跳转）9. **LCSC国际价（¥）**（如 1.22 ↗，标注"USD×7.25"）10. **买手全网最低价（¥）**（如 1.15，标注"含优惠券"）11. **最低价来源**（如"华秋商城 ↗"）12. **分类**（可选，如"MCU"、"传感器"）13. **备注**（如"库存不足，取1000+档位" / "经验估算，未经商城验证"）
-**HTML 生成代码示例**：```pythondef generate_html_table(bom_data):    """生成 HTML 表格，带来源链接"""    html = """<!DOCTYPE html><html><head>    <meta charset="UTF-8">    <title>BOM 比价单</title>    <style>        table { border-collapse: collapse; width: 100%; font-size: 13px; }        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }        th { background-color: #4CAF50; color: white; }        tr:nth-child(even) { background-color: #f2f2f2; }        .min-price { color: red; font-weight: bold; }        .exp-price { color: #999; font-style: italic; }        a { color: #1a73e8; text-decoration: none; }        a:hover { text-decoration: underline; }    </style></head><body>    <h2>BOM 比价单</h2>    <p>生成时间：""" + datetime.now().strftime('%Y-%m-%d %H:%M:%S') + """</p>    <p>比价档位：2000+ （库存不足时取最低可用档位）</p>    <table>        <tr>            <th>序号</th><th>型号</th><th>封装</th><th>数量</th><th>品牌</th>            <th>立创价格（¥）</th><th>华秋价格（¥）</th>            <th>云汉价格（¥）</th><th>LCSC国际价（¥）</th>            <th>买手全网最低价（¥）</th><th>最低价来源</th>            <th>分类</th><th>备注</th>        </tr>"""        for i, item in enumerate(bom_data, 1):        min_price, min_source, min_links = compare_prices(item['prices'])                # 立创价格单元格（带链接）        lc_price = item['prices'].get('立创商城', {})        lc_cell = f'<a href="{lc_price.get("link", "")}" target="_blank">{lc_price.get("price", "未获取")}</a>' if lc_price.get('link') else str(lc_price.get('price', '未获取'))                # 华秋价格单元格        hq_price = item['prices'].get('华秋商城', {})        hq_cell = f'<a href="{hq_price.get("link", "")}" target="_blank">{hq_price.get("price", "未获取")}</a>' if hq_price.get('link') else str(hq_price.get('price', '未获取'))                # 云汉价格单元格        yh_price = item['prices'].get('云汉芯城', {})        yh_cell = f'<a href="{yh_price.get("link", "")}" target="_blank">{yh_price.get("price", "未获取")}</a>' if yh_price.get('link') else str(yh_price.get('price', '未获取'))                # LCSC价格单元格        lcsc_price = item['prices'].get('LCSC国际站', {})        lcsc_cell = f'<a href="{lcsc_price.get("link", "")}" target="_blank">{lcsc_price.get("price", "未获取")}</a>' if lcsc_price.get('link') else str(lcsc_price.get('price', '未获取'))                # 最低价来源单元格（带链接）        source_cell = min_source        if min_links:            source_cell = ' + '.join([f'<a href="{link}" target="_blank">{min_source}</a>' for link in min_links])                html += f"""        <tr>            <td>{i}</td>            <td>{item['model']}</td>            <td>{item.get('package', '')}</td>            <td>{item.get('quantity', 2000)}</td>            <td>{item.get('brand', '')}</td>            <td>{lc_cell}</td>            <td>{hq_cell}</td>            <td>{yh_cell}</td>            <td>{lcsc_cell}</td>            <td>{item['prices'].get('买手全网', '未获取')}</td>            <td class="min-price">{source_cell}</td>            <td>{item.get('category', '')}</td>            <td>{item.get('remarks', '')}</td>        </tr>"""        html += """    </table></body></html>"""    return html```
-**使用 preview_url 工具展示**：```pythonhtml_content = generate_html_table(bom_data)html_path = '/Users/lizhengan/WorkBuddy/2026-05-11-task-10/BOM_比价单.html'with open(html_path, 'w', encoding='utf-8') as f:    f.write(html_content)
-preview_url(url=html_path)```
-#### 5.2 Excel 文件（可选）
-如果用户需要，生成 .xlsx 文件。
-**文件命名**：`BOM_比价单_YYYYMMDD_HHMMSS.xlsx`示例：`BOM_比价单_20260511_103045.xlsx`
-**Sheet1：比价结果**| 序号 | 型号 | 封装 | 数量 | 品牌 | 立创价格（¥） | 华秋价格（¥） | 云汉价格（¥） | LCSC国际价（¥） | 买手全网最低价（¥） | 最低价来源 | 分类 | 备注 |
-**Sheet2：各平台详细阶梯价**| 型号 | 平台 | 1+ | 10+ | 100+ | 500+ | 1000+ | 2000+ | 库存 | 商品链接 |
-**Sheet3：价格来源说明**| 来源 | 获取方式 | 可靠性 | 备注 ||------|---------|------|------|| 博查AI搜索（已验证） | 胜算云+WebFetch验证 | ★★★★☆ | 首选，商城链接验证后可信 || 博查AI搜索（未验证） | 胜算云脚本 | ★★★☆☆ | 搜索缓存价，可能有时间差 || 立创商城 | WebFetch / Playwright | ★★★★☆ | 博查无结果时的补充 || LCSC国际站 | WebFetch / API | ★★★☆☆ | USD需换算，博查无结果时补充 || 买手全网 | 买手脚本 | ★★☆☆☆ | 消费级参考价 || 经验估算 | AI推理 | ★☆☆☆☆ | 仅供预算参考 |
+
+如果 2000+ 档位库存不足，取最低可用档位的价格。我们只是预估价格，不需要严格匹配库存。
+
+### 第5步：组装数据 + 自动生成报告
+
+询价完成后，**自动**将所有询价结果组装成标准输入 JSON，然后调用管线自动生成 HTML 报告。不需要手动填写任何数据。
+
+#### 5.1 维护 BOM 结构（variant / shared）
+
+在整个询价过程中（第3步~第4步），大模型必须在内存中维护 BOM 清单的 variant/shared 分组结构：
+
+**分组规则（与 B.3 阶段保持一致）：**
+- `is_variant: true`：该类目在不同 BOM 版本中选型不同（如 MCU、电源IC）
+- `is_variant: false`：所有版本共用（如阻容感、连接器、晶振）
+
+**每个元器件在询价时必须记录以下信息：**
+
+| 字段 | 来源 | 说明 |
+|------|------|------|
+| `category` | B.3 Layer 3 | 分类（MCU/电源/传感器/阻容感...） |
+| `is_variant` | B.3 Step 1 | 是否跨版本不同 |
+| `part_number` | B.3 Layer 3 | 型号 |
+| `brand` | B.3 Layer 3 | 品牌 |
+| `package` | B.3 Layer 3 | 封装 |
+| `description` | B.3 Layer 3 | 关键参数描述 |
+| `version` | B.3 Step 1 | 仅 variant item 需要（"经济版"/"标准版"/"高性能版"） |
+| 各来源价格 | 第3-4步询价 | 详见 5.2 |
+
+#### 5.2 询价结果→输入 JSON 自动映射规则
+
+每颗元器件询价完成后，大模型按以下规则将多平台比价结果映射为输入 JSON 字段：
+
+**① `price_market`（商城价）= 最可靠的搜索价格**
+
+```
+优先级: 立创BOM配单价 > WebFetch验证商城价 > 博查/IQS搜索价
+price_market = 上述来源中的最低价
+```
+
+- 所有来源均无结果 → `price_market = null`
+- 立创BOM批量配单的价格直接采纳（最权威）
+- 博查/IQS 搜索到的价格也可以直接填入（不需要商城验证）
+
+**② `market_source`（商城价来源描述）**
+
+```
+根据实际获取渠道填写:
+  → "立创商城"    （立创BOM批量配单 或 WebFetch 验证立创）
+  → "华秋商城"    （WebFetch 验证华秋）
+  → "云汉芯城"    （WebFetch 验证云汉）
+  → "LCSC国际站"  （WebFetch 验证 LCSC）
+  → "博查+IQS"    （双源搜索，未经商城验证）
+  → "博查搜索"    （仅博查有结果）
+  → "IQS搜索"     （仅 IQS 有结果）
+  → ""            （全都没搜到）
+```
+
+- `market_source` 含白名单关键词（立创/华秋/云汉/LCSC）→ HTML 中显示可点击链接
+- `market_source` 为其他值 → HTML 中显示纯文字，无链接
+
+**③ `market_url`（商城确认链接）**
+
+```
+仅确认商城（立创/华秋/云汉/LCSC）且验证成功时才填 URL
+其他来源一律留空字符串 ""
+```
+
+**④ `price_ecommerce`（电商价）= 买手全网最低含券价**
+
+```
+price_ecommerce = 买手全网搜索结果中的最低 actualPrice
+买手无结果 → price_ecommerce = null
+```
+
+**⑤ `found`（是否搜到真实价格）**
+
+```
+found = true  → price_market 或 price_ecommerce 至少一个非 null
+found = false → 两者都为 null，只有经验估算
+```
+
+**⑥ `price_estimated_experience`（经验估算价，仅 found=false 时需要）**
+
+```
+found=false 时必须填，参考第3步经验估算参考值表
+```
+
+**映射示例**：
+
+```
+场景A: 立创BOM配单成功 + 买手有结果
+  price_market: 8.68
+  market_source: "立创商城"
+  market_url: "https://bom.szlcsc.com/..."
+  price_ecommerce: 10.20
+  found: true
+
+场景B: 博查+IQS一致 + WebFetch验证华秋 + 买手有结果
+  price_market: 5.20
+  market_source: "华秋商城"
+  market_url: "https://www.hqchip.com/product/xxx"
+  price_ecommerce: 8.80
+  found: true
+
+场景C: 仅博查有结果 + WebFetch失败 + 买手无结果
+  price_market: 0.45
+  market_source: "博查搜索"
+  market_url: ""
+  price_ecommerce: null
+  found: true
+
+场景D: 全部无结果
+  price_market: null
+  market_source: ""
+  market_url: ""
+  price_ecommerce: null
+  found: false
+  price_estimated_experience: 0.01
+```#### 5.3 组装输入 JSON 并生成报告
+
+所有元器件询价完成后，大模型执行以下步骤：
+
+**Step A：构建完整 JSON**
+
+用 Python 将询价结果写入 JSON 文件，结构参考 `schema/bom-input-example.json`：
+
+```python
+import json
+from datetime import datetime
+
+bom_input = {
+    "project": "<项目名称>",
+    "date": datetime.now().strftime("%Y-%m-%d"),
+    "quantity": "<产量描述>",
+    "total_quantity": "<总需求量>",
+    "batch_quantity": "<每批次数量>",
+    "versions": ["经济版", "标准版", "高性能版"],
+    "selected_version": "<用户选择的版本>",
+    "ai_suggestion": "<AI推荐建议>",
+    "risk_tags": [
+        {"tag": "风险描述", "level": "high/mid/low", "desc": "详细说明"}
+    ],
+    "items": [
+        # variant item 示例（各版本选型不同）
+        {
+            "id": 1,
+            "category": "MCU",
+            "is_variant": True,
+            "func_impact": "主控性能影响...",
+            "exp_impact": "高性能MCU带来...",
+            "func_impact_label": "关键",
+            "exp_impact_label": "重要",
+            "user_value": 5,
+            "cost_tier": "high",
+            "note": "选型说明",
+            "variants": [
+                {
+                    "version": "经济版",
+                    "brand": "Espressif",
+                    "package": "SMD-18",
+                    "part_number": "ESP32-C3-MINI-1-N4",
+                    "description": "160MHz RISC-V, WiFi+BLE5",
+                    "price_market": 8.5,
+                    "market_source": "立创商城",
+                    "market_url": "https://www.szlcsc.com/product/xxx",
+                    "price_ecommerce": 12,
+                    "ecommerce_source": "买手全网",
+                    "found": True,
+                    "func_impact_score": 50,
+                    "exp_impact_score": 50
+                }
+            ]
+        },
+        # shared item 示例（所有版本共用）
+        {
+            "id": 10,
+            "category": "阻容感",
+            "is_variant": False,
+            "brand": "YAGEO",
+            "package": "0603",
+            "part_number": "100nF 0603",
+            "description": "MLCC, 50V, 10%",
+            "price_market": None,
+            "market_source": "",
+            "market_url": "",
+            "price_ecommerce": None,
+            "ecommerce_source": "",
+            "found": False,
+            "cost_tier": "low",
+            "func_impact": "去耦电容影响电源稳定性",
+            "exp_impact": "影响长期可靠性",
+            "func_impact_label": "一般",
+            "exp_impact_label": "一般",
+            "user_value": 2,
+            "note": "通用料，价格极低",
+            "price_estimated_experience": 0.03
+        }
+    ]
+}
+
+output_path = f"data/{bom_input['project']}_query.json"
+with open(output_path, "w", encoding="utf-8") as f:
+    json.dump(bom_input, f, ensure_ascii=False, indent=2)
+```
+
+**Step B：调用管线自动生成报告**
+
+```bash
+cd ~/.workbuddy/skills/bom-price-checker
+python3 build_bom_json.py data/<项目名>_query.json
+```
+
+这一条命令会自动完成：
+1. `build_bom_json.py`：读取输入 JSON → 计算 price_estimated / cost_ratio → 过滤白名单链接 → 输出标准 JSON
+2. `generate_report.py`（自动调用）：标准 JSON → 注入 report-template.html → 输出独立 HTML 报告
+
+**Step C：预览报告**
+
+```bash
+# 找到生成的报告文件
+ls -t data/*_report.html | head -1
+```
+
+用 `preview_url` 工具预览生成的 HTML 报告文件。
+
+#### 5.4 询价过程预览（可选，show_widget）
+
+在询价过程中（不是最后），大模型可以用 `show_widget` 展示比价进度表格，让用户看到实时进展。这是**过程预览**，不是最终报告。
+
+**表格列（简化版）**：序号、型号、分类、商城价、电商价、状态（✅已验证/🔄查询中/⚠️未验证）
+
+最终交付以 Step B 生成的 HTML 报告为准。
+
+#### 5.5 Excel 文件（可选）
+
+如果用户需要，可额外生成 .xlsx 文件。但这不是默认输出，HTML 报告才是默认交付物。
 
 ---
 
-## Phase 3: 报告生成（标准 HTML 报告）
+## 报告模板说明
 
-询价完成后，使用标准报告模板生成可分享的 HTML 报告。
-
-### 整体流程
-
-```
-询价完成 → 填写输入 JSON → build_bom_json.py → 标准 JSON → generate_report.py → HTML 报告
-```
-
-### 3.1 填写输入 JSON
-
-按照 `schema/bom-input-example.json` 格式，将询价结果填入输入 JSON。
-
-**关键字段说明：**
-
-| 字段 | 说明 |
-|------|------|
-| `price_market` | 商城价（立创/华秋/云汉/LCSC 最低） |
-| `market_source` | 商城价来源描述，如"立创商城"、"华秋商城" |
-| `market_url` | 商城确认链接，**仅确认商城来源才填** |
-| `price_ecommerce` | 电商价（买手全网最低含券） |
-| `found` | `true`=搜到真实价格，`false`=只有经验估算 |
-| `price_estimated_experience` | 经验估算价（无搜索价时使用，仅 shared item） |
-
-**Item 结构分两种：**
-- **variant item** (`is_variant: true`)：含 `variants` 数组，每个 variant 代表一个版本的选型
-- **shared item** (`is_variant: false`)：所有版本共用，直接在 item 上填价格字段
-
-### 3.2 生成标准 JSON
-
-```bash
-cd ~/.workbuddy/skills/bom-price-checker
-python3 build_bom_json.py data/xxx-query.json
-```
-
-**自动计算字段：**
-- `price_estimated` = `min(price_market, price_ecommerce) × 0.85`（有搜索价时）
-- `price_estimated` = `price_estimated_experience`（无搜索价时）
-- `source` / `source_url` = **仅当** `market_source` 含"立创/华秋/云汉/LCSC"才保留到输出
-- `cost_ratio` = 所有 item 处理完后自动计算成本占比
-
-输出文件：`data/<项目名>_<日期>.json`
-
-### 3.3 生成 HTML 报告
-
-```bash
-cd ~/.workbuddy/skills/bom-price-checker
-python3 generate_report.py data/<项目名>_<日期>.json
-```
-
-输出文件：`data/<项目名>_<日期>_report.html`
-
-在 WorkBuddy 中用 `preview_url` 工具预览。
-
-### 3.4 报告价格列规则（重要）
+### 价格列渲染规则
 
 报告模板 `report-template.html` 中有三列价格，渲染规则不同：
 
 | 价格列 | 显示内容 | 可点击链接 | 来源标注 |
 |--------|----------|-----------|---------|
-| **商城价** | 商城最低价 | ✅ 仅当来源是确认商城（立创/华秋/云汉/LCSC）且有 URL 时 | ✅ 悬停显示来源名 |
-| **电商价** | 买手全网最低含券价 | ❌ 无链接 | ❌ 不显示 |
-| **预估价** | min(商城价,电商价)×0.85 或经验值 | ❌ 无链接 | ❌ 不显示 |
+| **商城价** | 商城最低价 | 仅当来源是确认商城（立创/华秋/云汉/LCSC）且有 URL 时 | 悬停显示来源名 |
+| **电商价** | 买手全网最低含券价 | 无链接 | 不显示 |
+| **预估价** | min(商城价,电商价)*0.85 或经验值 | 无链接 | 不显示 |
 
 **白名单逻辑：** `market_source` 必须包含"立创"或"华秋"或"云汉"或"LCSC"才会有可点击链接。AI搜索（博查/IQS）和买手全网的价格**不会**生成链接。
 
-### 3.5 报告模板文件清单
+### 报告模板文件清单
 
 | 文件 | 作用 |
 |------|------|
