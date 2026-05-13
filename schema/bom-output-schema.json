@@ -1,0 +1,98 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "BOM Price Query Output Schema",
+  "description": "bom-price-checker 询价标准输出格式，直接对接 report-template.html",
+  "type": "object",
+  "required": ["project", "date", "items"],
+  "properties": {
+    "project":        { "type": "string", "description": "项目名称" },
+    "date":           { "type": "string", "description": "查询日期 YYYY-MM-DD" },
+    "query_time":     { "type": "string", "description": "查询时间 HH:MM" },
+    "quantity":       { "type": "string", "description": "目标产量描述" },
+    "total_quantity": { "type": "string", "description": "总需求量，如 100000" },
+    "batch_quantity": { "type": "string", "description": "每批次数量，如 5000" },
+    "versions":       { "type": "array",  "items": { "type": "string" }, "description": "版本列表" },
+    "selected_version":{ "type": "string", "description": "用户选中版本" },
+    "ai_suggestion":  { "type": "string", "description": "AI推荐建议" },
+    "risk_tags": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "tag":  { "type": "string" },
+          "level": { "type": "string", "enum": ["high","mid","low"] },
+          "desc": { "type": "string" }
+        }
+      }
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          { "$ref": "#/definitions/variant_item" },
+          { "$ref": "#/definitions/shared_item" }
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "variant_item": {
+      "required": ["id", "category", "is_variant", "variants"],
+      "properties": {
+        "id":           { "type": "integer" },
+        "category":     { "type": "string" },
+        "is_variant":   { "type": "boolean", "enum": [true] },
+        "func_impact":  { "type": "string" },
+        "exp_impact":   { "type": "string" },
+        "cost_tier":    { "type": "string", "enum": ["high","mid","low"] },
+        "note":         { "type": "string" },
+        "variants":     { "type": "array", "items": { "$ref": "#/definitions/variant" } }
+      }
+    },
+    "shared_item": {
+      "required": ["id", "category", "is_variant", "part_number"],
+      "properties": {
+        "id":             { "type": "integer" },
+        "category":       { "type": "string" },
+        "is_variant":     { "type": "boolean", "enum": [false] },
+        "brand":          { "type": "string" },
+        "package":        { "type": "string" },
+        "part_number":    { "type": "string" },
+        "description":    { "type": "string" },
+        "price_market":   { "type": "number", "description": "商城价（立创/华秋/云汉/LCSC 最低）" },
+        "price_ecommerce":{ "type": "number", "description": "电商价（买手全网最低含券）" },
+        "price_estimated":{ "type": "number", "description": "预估价（min×0.85 或经验值）" },
+        "source":         { "type": "string", "description": "商城价来源描述，如'立创商城'、'华秋商城'" },
+        "source_url":     { "type": "string", "format": "uri", "description": "商城价确认链接（仅确认商城来源才有）" },
+        "found":          { "type": "boolean", "description": "是否搜索到真实价格" },
+        "cost_ratio":     { "type": "number", "description": "成本占比 %" },
+        "cost_tier":      { "type": "string" },
+        "func_impact":    { "type": "string" },
+        "exp_impact":     { "type": "string" },
+        "func_impact_label": { "type": "string" },
+        "exp_impact_label":  { "type": "string" },
+        "user_value":     { "type": "integer", "minimum": 1, "maximum": 5 },
+        "note":           { "type": "string" }
+      }
+    },
+    "variant": {
+      "required": ["version", "part_number"],
+      "properties": {
+        "version":          { "type": "string" },
+        "brand":            { "type": "string" },
+        "package":          { "type": "string" },
+        "part_number":      { "type": "string" },
+        "description":      { "type": "string" },
+        "price_market":     { "type": "number" },
+        "price_ecommerce":  { "type": "number" },
+        "price_estimated":  { "type": "number" },
+        "source":           { "type": "string" },
+        "source_url":       { "type": "string", "format": "uri" },
+        "found":            { "type": "boolean" },
+        "cost_ratio":       { "type": "number" },
+        "func_impact_score":  { "type": "integer" },
+        "exp_impact_score":   { "type": "integer" }
+      }
+    }
+  }
+}

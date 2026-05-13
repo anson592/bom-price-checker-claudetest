@@ -849,4 +849,85 @@ preview_url(url=html_path)```
 **Sheet1：比价结果**| 序号 | 型号 | 封装 | 数量 | 品牌 | 立创价格（¥） | 华秋价格（¥） | 云汉价格（¥） | LCSC国际价（¥） | 买手全网最低价（¥） | 最低价来源 | 分类 | 备注 |
 **Sheet2：各平台详细阶梯价**| 型号 | 平台 | 1+ | 10+ | 100+ | 500+ | 1000+ | 2000+ | 库存 | 商品链接 |
 **Sheet3：价格来源说明**| 来源 | 获取方式 | 可靠性 | 备注 ||------|---------|------|------|| 博查AI搜索（已验证） | 胜算云+WebFetch验证 | ★★★★☆ | 首选，商城链接验证后可信 || 博查AI搜索（未验证） | 胜算云脚本 | ★★★☆☆ | 搜索缓存价，可能有时间差 || 立创商城 | WebFetch / Playwright | ★★★★☆ | 博查无结果时的补充 || LCSC国际站 | WebFetch / API | ★★★☆☆ | USD需换算，博查无结果时补充 || 买手全网 | 买手脚本 | ★★☆☆☆ | 消费级参考价 || 经验估算 | AI推理 | ★☆☆☆☆ | 仅供预算参考 |
+
+---
+
+## Phase 3: 报告生成（标准 HTML 报告）
+
+询价完成后，使用标准报告模板生成可分享的 HTML 报告。
+
+### 整体流程
+
+```
+询价完成 → 填写输入 JSON → build_bom_json.py → 标准 JSON → generate_report.py → HTML 报告
+```
+
+### 3.1 填写输入 JSON
+
+按照 `schema/bom-input-example.json` 格式，将询价结果填入输入 JSON。
+
+**关键字段说明：**
+
+| 字段 | 说明 |
+|------|------|
+| `price_market` | 商城价（立创/华秋/云汉/LCSC 最低） |
+| `market_source` | 商城价来源描述，如"立创商城"、"华秋商城" |
+| `market_url` | 商城确认链接，**仅确认商城来源才填** |
+| `price_ecommerce` | 电商价（买手全网最低含券） |
+| `found` | `true`=搜到真实价格，`false`=只有经验估算 |
+| `price_estimated_experience` | 经验估算价（无搜索价时使用，仅 shared item） |
+
+**Item 结构分两种：**
+- **variant item** (`is_variant: true`)：含 `variants` 数组，每个 variant 代表一个版本的选型
+- **shared item** (`is_variant: false`)：所有版本共用，直接在 item 上填价格字段
+
+### 3.2 生成标准 JSON
+
+```bash
+cd ~/.workbuddy/skills/bom-price-checker
+python3 build_bom_json.py data/xxx-query.json
+```
+
+**自动计算字段：**
+- `price_estimated` = `min(price_market, price_ecommerce) × 0.85`（有搜索价时）
+- `price_estimated` = `price_estimated_experience`（无搜索价时）
+- `source` / `source_url` = **仅当** `market_source` 含"立创/华秋/云汉/LCSC"才保留到输出
+- `cost_ratio` = 所有 item 处理完后自动计算成本占比
+
+输出文件：`data/<项目名>_<日期>.json`
+
+### 3.3 生成 HTML 报告
+
+```bash
+cd ~/.workbuddy/skills/bom-price-checker
+python3 generate_report.py data/<项目名>_<日期>.json
+```
+
+输出文件：`data/<项目名>_<日期>_report.html`
+
+在 WorkBuddy 中用 `preview_url` 工具预览。
+
+### 3.4 报告价格列规则（重要）
+
+报告模板 `report-template.html` 中有三列价格，渲染规则不同：
+
+| 价格列 | 显示内容 | 可点击链接 | 来源标注 |
+|--------|----------|-----------|---------|
+| **商城价** | 商城最低价 | ✅ 仅当来源是确认商城（立创/华秋/云汉/LCSC）且有 URL 时 | ✅ 悬停显示来源名 |
+| **电商价** | 买手全网最低含券价 | ❌ 无链接 | ❌ 不显示 |
+| **预估价** | min(商城价,电商价)×0.85 或经验值 | ❌ 无链接 | ❌ 不显示 |
+
+**白名单逻辑：** `market_source` 必须包含"立创"或"华秋"或"云汉"或"LCSC"才会有可点击链接。AI搜索（博查/IQS）和买手全网的价格**不会**生成链接。
+
+### 3.5 报告模板文件清单
+
+| 文件 | 作用 |
+|------|------|
+| `report-template.html` | HTML 报告模板（含 JS 渲染逻辑） |
+| `generate_report.py` | 标准 JSON → HTML 报告生成脚本 |
+| `build_bom_json.py` | 询价输入 JSON → 标准 JSON 转换脚本 |
+| `schema/bom-output-schema.json` | 标准输出 JSON Schema |
+| `schema/bom-input-example.json` | 输入 JSON 示例（参考用） |
+| `README_WORKFLOW.md` | 工作流详细文档 |
+
 ---
