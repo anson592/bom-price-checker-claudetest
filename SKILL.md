@@ -21,11 +21,11 @@
 | 1 | **Python 3.11+** | P0 | `python3 --version` | 脚本全部无法运行 | 提示用户手动安装（系统级依赖） |
 | 2 | **requests 库** | P0 | `python3 -c "import requests"` | 博查/IQS/买手脚本报错 | `pip3 install requests` |
 | 3 | **openpyxl 库** | P0 | `python3 -c "import openpyxl"` | Excel 读写失败 | `pip3 install openpyxl` |
-| 4 | **Playwright MCP** | P1 | `python3 -c "import json,os; f=os.path.expanduser('~/.workbuddy/.mcp.json'); d=json.load(open(f)) if os.path.exists(f) else {}; pw=d.get('mcpServers',{}).get('playwright',{}); args=pw.get('args',[]); print('ok' if pw and ('--browser' in args or '@playwright/mcp@latest' in args) else 'missing')"` | 立创BOM批量配单/网页降级不可用 | **仅当不存在时才写入** `~/.workbuddy/.mcp.json` + 提示用户重启 WorkBuddy |
-| 5 | **本机浏览器可用** | P1 | 用 Python 跨平台检测：`python3 -c "import os,sys; paths={'win32':['C:/Program Files/Google/Chrome/Application/chrome.exe','C:/Program Files (x86)/Google/Chrome/Application/chrome.exe','C:/Program Files/Microsoft/Edge/Application/msedge.exe'],'darwin':['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome','/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge']}.get(sys.platform,[]); found=[p for p in paths if os.path.exists(p)]; print('found:',found[0] if found else 'none')"` 都没有则 `npx @playwright/mcp@latest --version 2>&1` 确认 Chromium 已装 | 无可用浏览器（立创BOM配单不可用） | 有 Chrome/Edge → 无需安装；无则 `npx playwright install chromium` |
-| 6 | **博查搜索连通性** | P1 | `python3 scripts/shengsuan_search.py "测试" --json 2>&1 \| head -5` | 博查搜索不可用 | 脚本内置 API Key，失败则提示检查网络 |
-| 7 | **买手搜索连通性** | P1 | `python3 scripts/search_price.py "测试" --json 2>&1 \| head -5` | 买手全网比价不可用 | 脚本内置 API Key，失败则提示检查网络 |
-| 8 | **IQS 搜索连通性** | P1 | `python3 scripts/iqs_search.py "测试" --json 2>&1 \| head -5` | IQS 交叉验证不可用（仅博查单源） | 脚本内置 API Key，额度耗尽提示用户更新 Key |
+| 4 | **博查搜索连通性** | P1 | `python3 scripts/shengsuan_search.py "测试" --json 2>&1 \| head -5` | 博查搜索不可用 | 脚本内置 API Key，失败则提示检查网络 |
+| 5 | **买手搜索连通性** | P1 | `python3 scripts/search_price.py "测试" --json 2>&1 \| head -5` | 买手全网比价不可用 | 脚本内置 API Key，失败则提示检查网络 |
+| 6 | **IQS 搜索连通性** | P1 | `python3 scripts/iqs_search.py "测试" --json 2>&1 \| head -5` | IQS 交叉验证不可用（仅博查单源） | 脚本内置 API Key，额度耗尽提示用户更新 Key |
+| 7 | **playwright Python 库** | P1 | `python3 -c "from playwright.async_api import async_playwright; print('ok')"` | 立创直搜不可用 | `pip3 install playwright && python3 -m playwright install chromium` |
+| 8 | **立创直搜连通性** | P1 | `python3 scripts/lcsc_szlcsc_search.py "ESP32" --json 2>&1 \| head -5` | 立创直搜不可用（降级到博查+IQS） | 检查 playwright 库与 chromium 是否安装 |
 
 **优先级说明**：
 - **P0（必需）**：缺失则阻塞流程，必须安装后才能继续
@@ -124,76 +124,7 @@ AskUserQuestion({
 |--------|---------|------|------|
 | requests | `pip3 install requests` | ~10s | |
 | openpyxl | `pip3 install openpyxl` | ~10s | |
-| Playwright MCP 配置 | Python 脚本写入 `~/.workbuddy/.mcp.json` | ~1s | **已配置则跳过，不覆盖**（避免反复清除 --browser 参数） |
-| Playwright 浏览器 | 优先复用本机 Chrome/Edge，无则 `npx playwright install chromium` | ~0s/~60s | 有系统浏览器则无需额外安装 |
-
-**Playwright MCP 自动配置脚本**（用 Python 写入 JSON 文件，**已有配置则直接跳过，不覆盖**）：
-```python
-import json, os, sys
-
-mcp_path = os.path.expanduser('~/.workbuddy/.mcp.json')
-config = {}
-if os.path.exists(mcp_path):
-    with open(mcp_path, 'r') as f:
-        config = json.load(f)
-
-if 'mcpServers' not in config:
-    config['mcpServers'] = {}
-
-# ⚠️ 关键保护逻辑：playwright 已配置则跳过，不覆盖用户的 --browser 参数
-existing_pw = config['mcpServers'].get('playwright', {})
-existing_args = existing_pw.get('args', [])
-if existing_pw and '@playwright/mcp@latest' in str(existing_args):
-    print("✅ Playwright MCP 已配置，跳过写入（保留现有配置，不覆盖）")
-    print(f"   当前配置：args = {existing_args}")
-    sys.exit(0)
-
-# 仅在没有 playwright 配置时才执行写入
-# 检测本机是否有 Chrome 或 Edge（跨平台：Windows / macOS / Linux）
-def detect_browser():
-    if sys.platform == 'win32':
-        candidates = [
-            (r'C:\Program Files\Google\Chrome\Application\chrome.exe', 'chrome'),
-            (r'C:\Program Files (x86)\Google\Chrome\Application\chrome.exe', 'chrome'),
-            (r'C:\Program Files\Microsoft\Edge\Application\msedge.exe', 'msedge'),
-            (r'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe', 'msedge'),
-        ]
-    elif sys.platform == 'darwin':
-        candidates = [
-            ('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', 'chrome'),
-            ('/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge', 'msedge'),
-        ]
-    else:  # Linux
-        candidates = [
-            ('/usr/bin/google-chrome', 'chrome'),
-            ('/usr/bin/chromium-browser', 'chromium'),
-            ('/usr/bin/microsoft-edge', 'msedge'),
-        ]
-    for path, name in candidates:
-        if os.path.exists(path):
-            return name
-    return None  # 回退到 Playwright 内置 Chromium（需单独安装）
-
-browser = detect_browser()
-args = ["@playwright/mcp@latest"]
-if browser:
-    args += ["--browser", browser]
-    print(f"✅ 检测到系统浏览器：{browser}，无需额外安装")
-else:
-    print("⚠️ 未检测到 Chrome/Edge，将使用 Playwright 内置 Chromium（需运行 npx playwright install chromium）")
-
-config['mcpServers']['playwright'] = {
-    "command": "npx",
-    "args": args,
-    "env": {}
-}
-
-with open(mcp_path, 'w') as f:
-    json.dump(config, f, indent=2, ensure_ascii=False)
-
-print("Playwright MCP 配置已首次写入 ~/.workbuddy/.mcp.json")
-print("⚠️ 请重启 WorkBuddy 让配置生效")
-```
+| playwright Python 库 | `pip3 install playwright && python3 -m playwright install chromium` | ~60s | 自动安装 Playwright 库和 Chromium 浏览器 |
 
 **需要用户手动操作的项**：
 
@@ -246,11 +177,11 @@ print(f"IQS API Key 已更新到 scripts/iqs_search.py")
 • Python 3.12.0
 • requests 库
 • openpyxl 库
-• Playwright MCP（浏览器已安装）
 • 博查搜索（已验证连通，内置 Key）
 • 买手搜索（已验证连通，内置 Key）
 • IQS 搜索（已验证连通，内置 Key）
-• 立创 Cookie（已保存）
+• playwright Python 库（已安装）
+• 立创直搜（szlcsc.com，连通正常）
 
 所有 API Key 均已内置，开箱即用。
 
@@ -263,7 +194,7 @@ print(f"IQS API Key 已更新到 scripts/iqs_search.py")
 ✅ 环境检查通过（6/8 已就绪，2 项已降级）：
 
 ⚠️ 以下功能已自动降级：
-• Playwright MCP → 立创BOM批量配单不可用，降级为博查+WebFetch 验证
+• playwright 库 / 立创直搜 → 降级为博查+IQS 搜索
 • IQS 搜索 → 内置 Key 可能额度不足，降级为博查单源搜索
 
 后续如需启用完整功能，随时告诉我，我帮你配置。
@@ -553,10 +484,10 @@ with open('BOM_反推.csv', 'w', newline='', encoding='utf-8-sig') as f:
 ```
 所有元器件（统一流程）：
 
-  Step 0: 立创BOM批量配单（★最高优先）
-    ├─ Cookie 在 + Playwright 成功 → 采纳立创配单价（最权威）
-    ├─ Cookie 不在 → 弹窗引导登录 → 登录后重试
-    └─ 失败/跳过 → 降级到 Step 1
+  Step 0: 立创直搜（★最高优先，无需登录）
+    ├─ found=true → 采纳立创商城实时价（最权威）
+    ├─ login_required=true → 触发频率限制，等待后重试
+    └─ found=false → 降级到 Step 1
 
   Step 1: 博查 + IQS 并行查询（~11s）
     ├─ 都有结果 → 交叉对比（一致/独有/存疑）
@@ -574,157 +505,60 @@ with open('BOM_反推.csv', 'w', newline='', encoding='utf-8-sig') as f:
     └─ 无结果 → price_ecommerce = null（HTML 显示 "-"）
 ```
 
-#### Step 0: 立创BOM批量配单（★最高优先）
+#### Step 0: 立创直搜（★最高优先，无需登录）
 
-> **一次性批量提交所有型号**，获取立创实时阶梯价格（含2000+档位），是最权威的商城确认价来源。
+> **逐条搜索**，无需 Cookie 或账号，获取立创商城实时价格。每次搜索启动独立 Playwright 浏览器实例，避免频率限制。
 
-**前置条件**：
-- Playwright MCP 已配置（Phase 0 检查项）
-- 用户拥有立创商城账号
-- Cookie 已保存到 `~/.workbuddy/skills/bom-price-checker/data/lcsc_cookies.json`
+**调用方式**：
 
-**流程**：
-
-```
-检查 Cookie
-  ├─ Cookie 存在 → Playwright MCP 批量配单
-  │   ├─ 成功 → 采纳立创配单价 + 链接 → market_source="立创商城"
-  │   └─ 失败（403/Cookie过期） → 弹窗引导重新登录 → 重试
-  │       └─ 重试失败 → 跳到 Step 1
-  └─ Cookie 不存在
-      ├─ AskUserQuestion 弹窗引导用户登录立创商城
-      │   ├─ 用户登录完成 → 保存 Cookie → Playwright 配单
-      │   │   ├─ 成功 → 采纳
-      │   │   └─ 失败 → 跳到 Step 1
-      │   └─ 用户选择跳过 → 跳到 Step 1
+```bash
+python3 scripts/lcsc_szlcsc_search.py '{型号}' --json
 ```
 
-**登录引导弹窗（主动触发）**：
+**JSON 输出格式**：
 
-使用 AskUserQuestion 工具弹窗，文案如下：
-
-```
-立创商城尚未登录，是否现在登录以获取最权威的实时价格？
-如需登录，请：
-1. 在浏览器中访问 https://www.szlcsc.com/ 完成登录
-2. 登录完成后告诉我，我会自动保存 Cookie 并继续查询
-```
-
-选项：
-- 「我已登录」 → 保存 Cookie → 继续配单
-- 「跳过，继续查询」 → 降级到 Step 1
-
-**Cookie 保存与恢复**（方案B，已验证）：
-
-```javascript
-// 使用 page.context().addCookies() 恢复登录态
-await page.context().addCookies([
-  {name: 'customerCode', value: '...', domain: 'www.jlc.com', path: '/'},
-  {name: 'isLoginCustomerFlag', value: '...', domain: '.szlcsc.com', path: '/'},
-  // ... 其他关键 Cookie
-]);
-
-// 绕过 ACL：从主页导航进入 BOM 页面，不要直接访问
-await page.goto('https://www.szlcsc.com/', { waitUntil: 'networkidle' });
-await page.goto('https://bom.szlcsc.com/bom.html?from=dh', { waitUntil: 'networkidle' });
-```
-
-**操作流程**：
-
-```
-Step 1：检查 Cookie 是否存在
-  → 读取 ~/.workbuddy/skills/bom-price-checker/data/lcsc_cookies.json
-  → 如果不存在或为空 → 弹窗引导登录
-
-Step 2：加载 Cookie 并建立浏览器上下文
-  → 读取 Cookie 文件
-  → 用 page.context().addCookies() 注入（必须用此方式，不能用 document.cookie）
-
-Step 3：绕过 ACL 访问 BOM 页面
-  → 先访问 https://www.szlcsc.com/ 建立上下文
-  → 再导航到 https://bom.szlcsc.com/bom.html?from=dh（直接访问会403）
-
-Step 4：批量提交 BOM 配单
-  → 格式：型号 封装 数量pcs（如：ESP32-S3-WROOM-1-N8 N8 1pcs）
-  → 每颗元器件一行，全量提交（避免逐颗查询耗时）
-  → 点击"开始配单"按钮
-
-Step 5：处理配单结果弹窗
-  → 定位 .el-dialog 内的确定按钮，点击完成
-
-Step 6：提取价格结果
-  → 解析配单结果表格，提取：型号、品牌、单价（含税）、匹配状态
-```
-
-**Playwright MCP 代码示例**：
-```javascript
-const fs = require('fs');
-const os = require('os');
-const cookiePath = os.homedir() + '/.workbuddy/skills/bom-price-checker/data/lcsc_cookies.json';
-
-// Step 1: 检查 Cookie 文件
-let cookies = [];
-if (fs.existsSync(cookiePath)) {
-  const raw = fs.readFileSync(cookiePath, 'utf8');
-  const parsed = JSON.parse(raw);
-  if (Array.isArray(parsed) && parsed.length > 0) cookies = parsed;
-}
-
-if (cookies.length === 0) {
-  // 通知主流程：未登录，弹窗引导登录
-  return { status: 'NO_COOKIES', message: '立创商城未登录，请先登录' };
-}
-
-// Step 2: 注入 Cookie
-await page.context().addCookies(cookies);
-
-// Step 3: 绕过 ACL 访问 BOM 页面
-await page.goto('https://www.szlcsc.com/', { waitUntil: 'networkidle' });
-await page.goto('https://bom.szlcsc.com/bom.html?from=dh', { waitUntil: 'networkidle' });
-await page.waitForTimeout(2000);
-
-// Step 4: 输入 BOM（每颗一行）
-const bomText = bomItems.map(item => `${item.型号} ${item.封装 || 'N/A'} ${item.数量 || 1}pcs`).join('\n');
-const textarea = await page.locator('textarea').first();
-await textarea.fill(bomText);
-await page.getByText('开始配单').click();
-
-// Step 5: 等待并处理结果弹窗
-await page.waitForTimeout(3000);
-const dialog = page.locator('.el-dialog');
-if (await dialog.isVisible()) {
-  await dialog.locator('button:has-text("确定")').click();
-  await page.waitForTimeout(1000);
-}
-
-// Step 6: 提取价格结果
-const rows = await page.locator('.bom-table tr, table tr').all();
-const prices = {};
-for (const row of rows) {
-  const cells = await row.locator('td').allTextContents();
-  if (cells.length >= 3) {
-    const model = cells[0].trim();
-    const priceMatch = cells[2].match(/¥?([\d.]+)/);
-    if (priceMatch) prices[model] = parseFloat(priceMatch[1]);
-  }
-}
-return { status: 'OK', prices };
-```
-
-**Cookie 文件格式**（`lcsc_cookies.json`，关键 Cookie）：
 ```json
-[
-  { "name": "customerCode",       "value": "12451540A",       "domain": "www.jlc.com",  "path": "/" },
-  { "name": "isLoginCustomerFlag", "value": "12451540A",       "domain": ".szlcsc.com",  "path": "/" },
-  { "name": "PROD-JLC-CAS-SID",   "value": "CAS-SID-xxx",     "domain": ".jlc.com",     "path": "/", "sameSite": "None", "secure": true }
-]
+{
+  "keyword": "ESP32-S3-WROOM-1-N8R8",
+  "found": true,
+  "login_required": false,
+  "source": "立创商城",
+  "part_number": "ESP32-S3-WROOM-1-N8R8",
+  "brand": "ESPRESSIF(乐鑫)",
+  "price": 30.76,
+  "currency": "CNY",
+  "total_found": 5,
+  "url": "https://www.szlcsc.com/search?q=ESP32-S3-WROOM-1-N8R8"
+}
 ```
+
+**决策逻辑**：
+
+```
+python3 scripts/lcsc_szlcsc_search.py '{型号}' --json
+  ├─ found=true
+  │   → price_market = price
+  │   → market_source = "立创商城"
+  │   → market_url = url
+  │   → 跳过 Step 1 和 Step 2
+  ├─ login_required=true（触发频率限制，szlcsc 跳转登录页）
+  │   → 等待 30 秒后重试一次
+  │   → 重试仍失败 → 降级到 Step 1
+  └─ found=false（型号未在立创商城收录）
+      → 降级到 Step 1（博查+IQS）
+```
+
+**内置关键词映射**（搜索前自动转换）：
+
+| 输入关键词 | 实际搜索词 |
+|-----------|-----------|
+| USB-C / USB C / TYPE-C 16P | TYPE-C 16PIN母座 |
 
 **注意事项**：
-- Cookie 有效期通常为 7-30 天，过期后需重新登录
-- Cookie 注入了但仍跳转登录页，说明 Cookie 已过期，需重新登录
+- 连续高频搜索可能触发 szlcsc 频率限制（`login_required=true`），单次任务通常不触发
 - Step 0 成功的元器件**仍然需要查买手全网**（Step 3），以获取电商对比价
 - Step 0 成功的元器件跳过 Step 1 和 Step 2
+- PCB 制板（嘉立创 PCB 服务）不在立创商城收录，直接跳到 Step 3
 
 ---
 #### Step 1: 博查 + IQS 并行查询
