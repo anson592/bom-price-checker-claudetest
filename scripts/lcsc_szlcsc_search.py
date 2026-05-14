@@ -24,25 +24,14 @@ KEYWORD_MAP = {
     "USBC":       "TYPE-C 16PIN母座",
 }
 
-DEFAULT_QTY = 2000  # 默认采购量（用于阶梯价格选档）
-
-
-def _pick_price(prices: list, qty: int) -> tuple[float | None, int | None]:
+def _pick_price(prices: list) -> tuple[float | None, int | None]:
     """
-    从阶梯价格列表中选出适合采购量 qty 的最优档位。
-    规则：找 startPurchasedNumber <= qty 的所有档位，取其中 startPurchasedNumber 最大的一档
-    （即最接近但不超过 qty 的档位）。
-    endPurchasedNumber == -1 表示该档无上限。
-    返回 (price, startPurchasedNumber)，找不到时返回 (None, None)。
+    从阶梯价格列表中取最低价（即最大批量档位）。
+    返回 (min_price, 对应的 startPurchasedNumber)，找不到时返回 (None, None)。
     """
     if not prices:
         return None, None
-    eligible = [p for p in prices if p.get("startPurchasedNumber", 0) <= qty]
-    if not eligible:
-        # qty 小于最低起订量，取第一档
-        p = prices[0]
-        return p.get("productPrice"), p.get("startPurchasedNumber")
-    best = max(eligible, key=lambda p: p.get("startPurchasedNumber", 0))
+    best = min(prices, key=lambda p: p.get("productPrice") or float("inf"))
     return best.get("productPrice"), best.get("startPurchasedNumber")
 
 
@@ -89,7 +78,7 @@ def _best_record(records: list, keyword: str) -> dict | None:
     return records[0] if records else None
 
 
-async def _search_async(keyword: str, qty: int = DEFAULT_QTY) -> dict:
+async def _search_async(keyword: str) -> dict:
     from playwright.async_api import async_playwright
 
     mapped = _map_keyword(keyword)
@@ -101,9 +90,8 @@ async def _search_async(keyword: str, qty: int = DEFAULT_QTY) -> dict:
         "source": "立创商城",
         "part_number": None,
         "brand": None,
-        "qty": qty,
         "price": None,
-        "price_ladder": None,   # 实际命中的阶梯起购量
+        "price_ladder": None,   # 最低价对应的阶梯起购量
         "currency": "CNY",
         "total_found": 0,
         "url": SEARCH_URL_TPL.format(mapped),
@@ -157,13 +145,13 @@ async def _search_async(keyword: str, qty: int = DEFAULT_QTY) -> dict:
                 best = _best_record(records, mapped)
                 vo = best.get("productVO") or {}
                 prices = vo.get("productPriceList") or []
-                price_val, ladder = _pick_price(prices, qty)
+                price_val, ladder = _pick_price(prices)
 
                 result["found"] = True
                 result["part_number"] = vo.get("productModel")
                 result["brand"] = vo.get("productGradePlateName")
                 result["price"] = float(price_val) if price_val is not None else None
-                result["price_ladder"] = ladder  # 命中档位的起购量
+                result["price_ladder"] = ladder  # 最低价对应的阶梯起购量
 
         except Exception as e:
             result["error"] = str(e)
@@ -173,8 +161,8 @@ async def _search_async(keyword: str, qty: int = DEFAULT_QTY) -> dict:
     return result
 
 
-def search(keyword: str, qty: int = DEFAULT_QTY) -> dict:
-    return asyncio.run(_search_async(keyword, qty))
+def search(keyword: str) -> dict:
+    return asyncio.run(_search_async(keyword))
 
 
 def _format_text(r: dict) -> str:
@@ -184,14 +172,13 @@ def _format_text(r: dict) -> str:
         mapped = r.get("mapped_keyword")
         note = f"（映射关键词: {mapped}）" if mapped else ""
         return f"[{r['keyword']}] 未在立创商城找到匹配型号{note}"
-    qty = r.get("qty", DEFAULT_QTY)
     ladder = r.get("price_ladder")
-    ladder_note = f"（{ladder}+ 档）" if ladder is not None else ""
+    ladder_note = f"（{ladder}+ 起）" if ladder is not None else ""
     lines = [
         f"[{r['keyword']}] 立创商城",
         f"  型号  : {r['part_number']}",
         f"  品牌  : {r['brand']}",
-        f"  单价  : ¥{r['price']:.4f}{ladder_note}（采购量: {qty}）" if r.get("price") else "  单价  : 暂无",
+        f"  单价  : ¥{r['price']:.4f}{ladder_note}" if r.get("price") else "  单价  : 暂无",
         f"  共找到: {r['total_found']} 条",
         f"  链接  : {r['url']}",
     ]
@@ -208,11 +195,9 @@ def main():
     parser.add_argument("keyword", help="元器件型号")
     parser.add_argument("-j", "--json", action="store_true", dest="json_output",
                         help="JSON 格式输出")
-    parser.add_argument("--qty", type=int, default=DEFAULT_QTY,
-                        help=f"采购量（用于选取阶梯价格，默认 {DEFAULT_QTY}）")
     args = parser.parse_args()
 
-    result = search(args.keyword, args.qty)
+    result = search(args.keyword)
 
     if args.json_output:
         print(json.dumps(result, ensure_ascii=False, indent=2))
