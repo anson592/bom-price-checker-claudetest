@@ -21,7 +21,7 @@
 | 1 | **Python 3.11+** | P0 | `python3 --version` | 脚本全部无法运行 | 提示用户手动安装（系统级依赖） |
 | 2 | **requests 库** | P0 | `python3 -c "import requests"` | 博查/IQS/买手脚本报错 | `pip3 install requests` |
 | 3 | **openpyxl 库** | P0 | `python3 -c "import openpyxl"` | Excel 读写失败 | `pip3 install openpyxl` |
-| 4 | **Playwright MCP** | P1 | `test -f ~/.workbuddy/.mcp.json && grep -q playwright ~/.workbuddy/.mcp.json` | 立创BOM批量配单/网页降级不可用 | 自动写入 `~/.workbuddy/.mcp.json` + 提示用户重启 WorkBuddy |
+| 4 | **Playwright MCP** | P1 | `python3 -c "import json,os; f=os.path.expanduser('~/.workbuddy/.mcp.json'); d=json.load(open(f)) if os.path.exists(f) else {}; pw=d.get('mcpServers',{}).get('playwright',{}); args=pw.get('args',[]); print('ok' if pw and ('--browser' in args or '@playwright/mcp@latest' in args) else 'missing')"` | 立创BOM批量配单/网页降级不可用 | **仅当不存在时才写入** `~/.workbuddy/.mcp.json` + 提示用户重启 WorkBuddy |
 | 5 | **本机浏览器可用** | P1 | 用 Python 跨平台检测：`python3 -c "import os,sys; paths={'win32':['C:/Program Files/Google/Chrome/Application/chrome.exe','C:/Program Files (x86)/Google/Chrome/Application/chrome.exe','C:/Program Files/Microsoft/Edge/Application/msedge.exe'],'darwin':['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome','/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge']}.get(sys.platform,[]); found=[p for p in paths if os.path.exists(p)]; print('found:',found[0] if found else 'none')"` 都没有则 `npx @playwright/mcp@latest --version 2>&1` 确认 Chromium 已装 | 无可用浏览器（立创BOM配单不可用） | 有 Chrome/Edge → 无需安装；无则 `npx playwright install chromium` |
 | 6 | **博查搜索连通性** | P1 | `python3 scripts/shengsuan_search.py "测试" --json 2>&1 \| head -5` | 博查搜索不可用 | 脚本内置 API Key，失败则提示检查网络 |
 | 7 | **买手搜索连通性** | P1 | `python3 scripts/search_price.py "测试" --json 2>&1 \| head -5` | 买手全网比价不可用 | 脚本内置 API Key，失败则提示检查网络 |
@@ -124,10 +124,10 @@ AskUserQuestion({
 |--------|---------|------|------|
 | requests | `pip3 install requests` | ~10s | |
 | openpyxl | `pip3 install openpyxl` | ~10s | |
-| Playwright MCP 配置 | Python 脚本写入 `~/.workbuddy/.mcp.json` | ~1s | 见下方配置脚本，优先用系统 Chrome |
+| Playwright MCP 配置 | Python 脚本写入 `~/.workbuddy/.mcp.json` | ~1s | **已配置则跳过，不覆盖**（避免反复清除 --browser 参数） |
 | Playwright 浏览器 | 优先复用本机 Chrome/Edge，无则 `npx playwright install chromium` | ~0s/~60s | 有系统浏览器则无需额外安装 |
 
-**Playwright MCP 自动配置脚本**（用 Python 写入 JSON 文件，优先使用系统 Chrome）：
+**Playwright MCP 自动配置脚本**（用 Python 写入 JSON 文件，**已有配置则直接跳过，不覆盖**）：
 ```python
 import json, os, sys
 
@@ -140,6 +140,15 @@ if os.path.exists(mcp_path):
 if 'mcpServers' not in config:
     config['mcpServers'] = {}
 
+# ⚠️ 关键保护逻辑：playwright 已配置则跳过，不覆盖用户的 --browser 参数
+existing_pw = config['mcpServers'].get('playwright', {})
+existing_args = existing_pw.get('args', [])
+if existing_pw and '@playwright/mcp@latest' in str(existing_args):
+    print("✅ Playwright MCP 已配置，跳过写入（保留现有配置，不覆盖）")
+    print(f"   当前配置：args = {existing_args}")
+    sys.exit(0)
+
+# 仅在没有 playwright 配置时才执行写入
 # 检测本机是否有 Chrome 或 Edge（跨平台：Windows / macOS / Linux）
 def detect_browser():
     if sys.platform == 'win32':
@@ -182,7 +191,7 @@ config['mcpServers']['playwright'] = {
 with open(mcp_path, 'w') as f:
     json.dump(config, f, indent=2, ensure_ascii=False)
 
-print("Playwright MCP 配置已写入 ~/.workbuddy/.mcp.json")
+print("Playwright MCP 配置已首次写入 ~/.workbuddy/.mcp.json")
 print("⚠️ 请重启 WorkBuddy 让配置生效")
 ```
 
