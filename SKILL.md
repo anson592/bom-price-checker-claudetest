@@ -22,7 +22,7 @@
 | 2 | **requests 库** | P0 | `python3 -c "import requests"` | 博查/IQS/买手脚本报错 | `pip3 install requests` |
 | 3 | **openpyxl 库** | P0 | `python3 -c "import openpyxl"` | Excel 读写失败 | `pip3 install openpyxl` |
 | 4 | **Playwright MCP** | P1 | `test -f ~/.workbuddy/.mcp.json && grep -q playwright ~/.workbuddy/.mcp.json` | 立创BOM批量配单/网页降级不可用 | 自动写入 `~/.workbuddy/.mcp.json` + 提示用户重启 WorkBuddy |
-| 5 | **本机浏览器可用** | P1 | macOS: `ls /Applications/Google\ Chrome.app /Applications/Microsoft\ Edge.app 2>/dev/null \| head -1`; 都没有则 `npx @playwright/mcp@latest --version 2>&1` 确认 Chromium 已装 | 无可用浏览器（立创BOM配单不可用） | 有 Chrome/Edge → 无需安装；无则 `npx playwright install chromium` |
+| 5 | **本机浏览器可用** | P1 | 用 Python 跨平台检测：`python3 -c "import os,sys; paths={'win32':['C:/Program Files/Google/Chrome/Application/chrome.exe','C:/Program Files (x86)/Google/Chrome/Application/chrome.exe','C:/Program Files/Microsoft/Edge/Application/msedge.exe'],'darwin':['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome','/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge']}.get(sys.platform,[]); found=[p for p in paths if os.path.exists(p)]; print('found:',found[0] if found else 'none')"` 都没有则 `npx @playwright/mcp@latest --version 2>&1` 确认 Chromium 已装 | 无可用浏览器（立创BOM配单不可用） | 有 Chrome/Edge → 无需安装；无则 `npx playwright install chromium` |
 | 6 | **博查搜索连通性** | P1 | `python3 scripts/shengsuan_search.py "测试" --json 2>&1 \| head -5` | 博查搜索不可用 | 脚本内置 API Key，失败则提示检查网络 |
 | 7 | **买手搜索连通性** | P1 | `python3 scripts/search_price.py "测试" --json 2>&1 \| head -5` | 买手全网比价不可用 | 脚本内置 API Key，失败则提示检查网络 |
 | 8 | **IQS 搜索连通性** | P1 | `python3 scripts/iqs_search.py "测试" --json 2>&1 \| head -5` | IQS 交叉验证不可用（仅博查单源） | 脚本内置 API Key，额度耗尽提示用户更新 Key |
@@ -129,7 +129,7 @@ AskUserQuestion({
 
 **Playwright MCP 自动配置脚本**（用 Python 写入 JSON 文件，优先使用系统 Chrome）：
 ```python
-import json, os, subprocess
+import json, os, sys
 
 mcp_path = os.path.expanduser('~/.workbuddy/.mcp.json')
 config = {}
@@ -140,16 +140,30 @@ if os.path.exists(mcp_path):
 if 'mcpServers' not in config:
     config['mcpServers'] = {}
 
-# 检测本机是否有 Chrome 或 Edge（macOS）
+# 检测本机是否有 Chrome 或 Edge（跨平台：Windows / macOS / Linux）
 def detect_browser():
-    candidates = [
-        ('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', 'chrome'),
-        ('/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge', 'msedge'),
-    ]
+    if sys.platform == 'win32':
+        candidates = [
+            (r'C:\Program Files\Google\Chrome\Application\chrome.exe', 'chrome'),
+            (r'C:\Program Files (x86)\Google\Chrome\Application\chrome.exe', 'chrome'),
+            (r'C:\Program Files\Microsoft\Edge\Application\msedge.exe', 'msedge'),
+            (r'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe', 'msedge'),
+        ]
+    elif sys.platform == 'darwin':
+        candidates = [
+            ('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', 'chrome'),
+            ('/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge', 'msedge'),
+        ]
+    else:  # Linux
+        candidates = [
+            ('/usr/bin/google-chrome', 'chrome'),
+            ('/usr/bin/chromium-browser', 'chromium'),
+            ('/usr/bin/microsoft-edge', 'msedge'),
+        ]
     for path, name in candidates:
         if os.path.exists(path):
             return name
-    return None  # 回退到 Chromium（需单独安装）
+    return None  # 回退到 Playwright 内置 Chromium（需单独安装）
 
 browser = detect_browser()
 args = ["@playwright/mcp@latest"]
