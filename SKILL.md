@@ -1,4 +1,5 @@
----name: bom-price-checkerdescription: 从产品需求反推BOM清单（支持经济版/标准版/高性能版多版本对比选择，show_widget可视化表格展示），或直接读取BOM表，按元器件类别分级查询价格（立创BOM批量配单最高优先/双源交叉验证+商城验证/买手全网比价），生成带来源链接的比价单。支持博查AI搜索+IQS/ai/answer并行交叉验证，HTML表格预览，默认2000套批量价比价。version: 8.4.0date: 2026-05-13trigger:  - "帮我查BOM价格"  - "BOM询价"  - "批量查价"  - "查询元器件价格"  - "我要做一个"  - "帮我选型"  - "成本预估"  - "BOM预估"  - "产品成本分析"---
+---name: bom-price-checkerdescription: 从产品需求反推BOM清单（支持经济版/标准版/高性能版多版本对比选择，show_widget可视化表格展示），或直接读取BOM表，按元器件类别分级查询价格（立创/华秋直搜最高优先/双源交叉验证+Playwright实时点验/买手全网比价），生成带来源链接的比价单。支持博查AI搜索+IQS/ai/answer并行交叉验证，HTML表格预览，默认2000套批量价比价。version: 8.6.0
+date: 2026-05-14trigger:  - "帮我查BOM价格"  - "BOM询价"  - "批量查价"  - "查询元器件价格"  - "我要做一个"  - "帮我选型"  - "成本预估"  - "BOM预估"  - "产品成本分析"---
 # BOM 价格查询助手
 ## 你的角色
 你是一个电子元器件采购助手，同时也是一位经验丰富的硬件系统工程师。你拥有两种核心能力：
@@ -26,6 +27,7 @@
 | 6 | **IQS 搜索连通性** | P1 | `python3 scripts/iqs_search.py "测试" --json 2>&1 \| head -5` | IQS 交叉验证不可用（仅博查单源） | 脚本内置 API Key，额度耗尽提示用户更新 Key |
 | 7 | **playwright Python 库** | P1 | `python3 -c "from playwright.async_api import async_playwright; print('ok')"` | 立创直搜不可用 | `pip3 install playwright && python3 -m playwright install chromium` |
 | 8 | **立创直搜连通性** | P1 | `python3 scripts/lcsc_szlcsc_search.py "ESP32" --json 2>&1 \| head -5` | 立创直搜不可用（降级到博查+IQS） | 检查 playwright 库与 chromium 是否安装 |
+| 9 | **华秋商城连通性** | P1 | `python3 scripts/hqchip_search.py "ESP32" --json 2>&1 \| head -5` | 华秋商城查询不可用 | 脚本已内置，失败则提示检查网络 |
 
 **优先级说明**：
 - **P0（必需）**：缺失则阻塞流程，必须安装后才能继续
@@ -173,15 +175,16 @@ print(f"IQS API Key 已更新到 scripts/iqs_search.py")
 ```
 ✅ 环境检查通过！
 
-已就绪（8/8）：
+已就绪（9/9）：
 • Python 3.12.0
 • requests 库
 • openpyxl 库
+• playwright Python 库（已安装）
+• 立创直搜（szlcsc.com，连通正常）
+• 华秋商城（hqchip.com，连通正常）
 • 博查搜索（已验证连通，内置 Key）
 • 买手搜索（已验证连通，内置 Key）
 • IQS 搜索（已验证连通，内置 Key）
-• playwright Python 库（已安装）
-• 立创直搜（szlcsc.com，连通正常）
 
 所有 API Key 均已内置，开箱即用。
 
@@ -194,7 +197,7 @@ print(f"IQS API Key 已更新到 scripts/iqs_search.py")
 ✅ 环境检查通过（6/8 已就绪，2 项已降级）：
 
 ⚠️ 以下功能已自动降级：
-• playwright 库 / 立创直搜 → 降级为博查+IQS 搜索
+• 华秋商城 / 立创商城 / playwright 库 → 降级为博查+IQS 搜索
 • IQS 搜索 → 内置 Key 可能额度不足，降级为博查单源搜索
 
 后续如需启用完整功能，随时告诉我，我帮你配置。
@@ -215,7 +218,7 @@ print(f"IQS API Key 已更新到 scripts/iqs_search.py")
 ---
 
 ## 博查AI搜索（胜算云联网搜索 — 高价值元器件首选价格源）
-博查AI搜索是高价值元器件查询的**首选方案**。它通过 AI 大模型 + 搜索引擎自动提取各平台价格数据，一次搜索可覆盖华秋、1688、维库等多个平台，返回结构化 JSON 价格数据（含来源链接）。拿到链接后，优先对四大商城链接（立创→华秋→云汉→LCSC）做 WebFetch 验证，确认价格准确性。
+博查AI搜索是高价值元器件查询的**首选方案**。它通过 AI 大模型 + 搜索引擎自动提取各平台价格数据，一次搜索可覆盖华秋、1688、维库等多个平台，返回结构化 JSON 价格数据（含来源链接）。拿到 AI 价格后，通过 Step 2 Playwright 实时点验与商城实测价格比对，确认价格准确性。
 **为什么博查是首选**：
 - **绕过反爬**：不需要直接访问商城页面，而是通过搜索引擎获取公开价格信息，彻底绕开立创/华秋等商城的反爬拦截
 - **一次搜索覆盖多平台**：相比逐个访问商城，博查一次请求就能拿到多个平台的价格
@@ -484,81 +487,125 @@ with open('BOM_反推.csv', 'w', newline='', encoding='utf-8-sig') as f:
 ```
 所有元器件（统一流程）：
 
-  Step 0: 立创直搜（★最高优先，无需登录）
-    ├─ found=true → 采纳立创商城实时价（最权威）
-    ├─ login_required=true → 触发频率限制，等待后重试
-    └─ found=false → 降级到 Step 1
+  Step 0: 华秋商城 + 立创商城并行查询（★最高优先，无需登录）
+    ├─ 并行查询（2-3秒完成双源）
+    │   ├─ 华秋商城（快速，2-3秒）
+    │   └─ 立创商城（权威，3-5秒）
+    ├─ 双源都成功 → 交叉验证（价格差异 < 20% 则采纳较低价）
+    ├─ 单源成功 → 采纳该源价格
+    └─ 双源都失败 → 降级到 Step 1
 
   Step 1: 博查 + IQS 并行查询（~11s）
     ├─ 都有结果 → 交叉对比（一致/独有/存疑）
     ├─ 只有一个有 → 记录
     └─ 都没有 → 跳到 Step 3
 
-  Step 2: 可选 WebFetch 验证（仅一次尝试）
-    ├─ 博查/IQS 返回了商城链接（立创/华秋/云汉/LCSC）
-    │   ├─ WebFetch 成功 → market_source = 商城名 + URL（白名单链接）
-    │   └─ WebFetch 失败 → 用搜索结果价，market_source = "博查搜索"/"IQS"/"博查+IQS"
-    └─ 无商城链接 → 跳过，直接用搜索结果价
+  Step 2: 可选 Playwright 实时点验（仅一次尝试）
+    ├─ Step 1 AI 搜索有价格结果时触发
+    │   ├─ Playwright 访问立创商城 → 拦截搜索 API → 实时价格 + 阶梯价
+    │   ├─ 差价 < 15% → verified（已验证 ✅，以 AI 价格为准）
+    │   ├─ 差价 ≥ 15% → suspicious（存疑 ⚠️，以实时价覆盖 AI 价格）
+    │   └─ Playwright 失败 → unverified（未验证 ❓，保留 AI 价格）
+    └─ Step 1 无结果 → 跳过，直接进 Step 3
 
   Step 3: 买手全网查询（所有元器件必查）
     ├─ 有结果 → price_ecommerce = 最低含券价
     └─ 无结果 → price_ecommerce = null（HTML 显示 "-"）
 ```
 
-#### Step 0: 立创直搜（★最高优先，无需登录）
+#### Step 0: 华秋商城 + 立创商城并行查询（★最高优先，无需登录）
 
-> **逐条搜索**，无需 Cookie 或账号，获取立创商城实时价格。每次搜索启动独立 Playwright 浏览器实例，避免频率限制。
+> **并行查询双源**，2-3秒完成，无需 Cookie 或账号。华秋商城用裸 requests，立创商城用 Playwright。
 
 **调用方式**：
 
-```bash
-python3 scripts/lcsc_szlcsc_search.py '{型号}' --json
+```python
+# 并行查询（推荐）
+import concurrent.futures
+
+with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+    future_hqchip = executor.submit(
+        lambda: subprocess.run(
+            ["python3", "scripts/hqchip_search.py", keyword, "--json"],
+            capture_output=True, text=True
+        )
+    )
+    future_lcsc = executor.submit(
+        lambda: subprocess.run(
+            ["python3", "scripts/lcsc_szlcsc_search.py", keyword, "--json"],
+            capture_output=True, text=True
+        )
+    )
+
+    hqchip_result = json.loads(future_hqchip.result().stdout)
+    lcsc_result = json.loads(future_lcsc.result().stdout)
 ```
 
-**JSON 输出格式**：
+**华秋商城 JSON 输出**：
 
 ```json
 {
   "keyword": "ESP32-S3-WROOM-1-N8R8",
   "found": true,
-  "login_required": false,
+  "source": "华秋商城",
+  "part_number": "ESP32-S3-WROOM-1-N8R8",
+  "brand": "Espressif",
+  "price": 30.1448,
+  "price_ladder": 1,
+  "stock": "63",
+  "currency": "CNY",
+  "total_found": 4,
+  "url": "https://www.hqchip.com/search.html?keyword=ESP32-S3-WROOM-1-N8R8"
+}
+```
+
+**立创商城 JSON 输出**：
+
+```json
+{
+  "keyword": "ESP32-S3-WROOM-1-N8R8",
+  "found": true,
   "source": "立创商城",
   "part_number": "ESP32-S3-WROOM-1-N8R8",
   "brand": "ESPRESSIF(乐鑫)",
   "price": 30.76,
-  "currency": "CNY",
-  "total_found": 5,
-  "url": "https://www.szlcsc.com/search?q=ESP32-S3-WROOM-1-N8R8"
+  "price_ladder": 1,
+  "url": "https://so.szlcsc.com/global.html?k=ESP32-S3-WROOM-1-N8R8"
 }
 ```
 
 **决策逻辑**：
 
 ```
-python3 scripts/lcsc_szlcsc_search.py '{型号}' --json
-  ├─ found=true
-  │   → price_market = price
+并行查询华秋 + 立创（2-3秒）
+  ├─ 双源都成功
+  │   ├─ 价格差异 < 20%
+  │   │   → price_market = min(华秋价格, 立创价格)
+  │   │   → market_source = "华秋商城+立创商城（双源验证）"
+  │   │   → 跳过 Step 1、Step 2
+  │   └─ 价格差异 >= 20%
+  │       → price_market = 华秋价格
+  │       → market_source = "华秋商城"
+  │       → 备注：立创价格差异 X 元（Y%）
+  │       → 跳过 Step 1、Step 2
+  ├─ 仅华秋成功
+  │   → price_market = 华秋价格
+  │   → market_source = "华秋商城"
+  │   → 跳过 Step 1、Step 2
+  ├─ 仅立创成功
+  │   → price_market = 立创价格
   │   → market_source = "立创商城"
-  │   → market_url = url
-  │   → 跳过 Step 1 和 Step 2
-  ├─ login_required=true（触发频率限制，szlcsc 跳转登录页）
-  │   → 等待 30 秒后重试一次
-  │   → 重试仍失败 → 降级到 Step 1
-  └─ found=false（型号未在立创商城收录）
+  │   → 跳过 Step 1、Step 2
+  └─ 双源都失败
       → 降级到 Step 1（博查+IQS）
 ```
 
-**内置关键词映射**（搜索前自动转换）：
-
-| 输入关键词 | 实际搜索词 |
-|-----------|-----------|
-| USB-C / USB C / TYPE-C 16P | TYPE-C 16PIN母座 |
-
 **注意事项**：
-- 连续高频搜索可能触发 szlcsc 频率限制（`login_required=true`），单次任务通常不触发
+- 并行查询耗时 = max(华秋耗时, 立创耗时) ≈ 2-3秒
+- 华秋商城：裸 requests，2-3秒，无反爬
+- 立创商城：Playwright，3-5秒，连续4次会触发登录（脚本已处理）
 - Step 0 成功的元器件**仍然需要查买手全网**（Step 3），以获取电商对比价
 - Step 0 成功的元器件跳过 Step 1 和 Step 2
-- PCB 制板（嘉立创 PCB 服务）不在立创商城收录，直接跳到 Step 3
 
 ---
 #### Step 1: 博查 + IQS 并行查询
@@ -599,39 +646,67 @@ python3 scripts/iqs_search.py '{型号} 价格 批量' --cross-verify --json
 **费用**：博查 0.036¥/次，IQS 按内置 Key 额度消耗。
 
 ---
-#### Step 2: 可选 WebFetch 验证（仅一次尝试）
+#### Step 2: 可选 Playwright 实时点验（仅一次尝试）
 
-> 仅当博查或 IQS 返回的链接指向**确认商城**（立创/华秋/云汉/LCSC）时，才尝试一次 WebFetch 验证。
-> **不逐个爬商城**，不重试，失败就用搜索结果价。
+> 仅当 Step 1（博查/IQS）有 AI 搜索价格结果时触发，用 Playwright headless 访问立创商城做实时价格比对。
+> **不逐个爬商城**，不重试，失败不阻塞。
 
-**验证条件**：博查/IQS 返回的 `link` 域名包含以下关键词之一：
-- `szlcsc.com`（立创商城）
-- `hqchip.com`（华秋商城）
-- `ickey.cn`（云汉芯城）
-- `lcsc.com`（LCSC 国际站）
+**触发条件**：Step 0 失败（降级到 Step 1），且 Step 1 博查或 IQS 至少有一个返回了价格。
+
+**验证目标**：立创商城（szlcsc.com），与 Step 0 共用同一套 Playwright 访问模式。
+
+**调用方式**：
+
+```bash
+python3 scripts/lcsc_playwright_verify.py '{型号}' --ai-price {Step1价格} --json
+```
 
 **验证流程**：
 
-```python
-# 如果博查或 IQS 返回了商城链接
-if has_shop_link:
-    result = WebFetch(
-        url=shop_link,
-        prompt='提取页面中的型号、2000+档位价格、商品详情页链接'
-    )
-    if result and '价格' in result:
-        # 验证成功 → market_source 填商城名（白名单关键词）
-        market_source = "立创商城" / "华秋商城" / "云汉芯城" / "LCSC国际站"
-        market_url = detail_page_link  # 商品详情页链接
-    else:
-        # 验证失败 → 保持搜索来源，不重试
-        pass
+1. Playwright headless 访问立创商城搜索页，关键词为待验证型号
+2. 用 `page.on("response", ...)` 拦截搜索 API 响应，提取实时价格和阶梯价格
+3. 拿到实时价格后与 AI 价格做差价比对，阈值 **15%**
+4. 15 秒超时，失败不重试
+
+**验证结果 — 三种 confidence 标记**：
+
+| confidence | 差价 | 含义 | 后续处理 |
+|-----------|------|------|---------|
+| `verified` | < 15% | 已验证 ✅ | 以 AI 价格为准 |
+| `suspicious` | ≥ 15% | 存疑 ⚠️ | 以 Playwright 实测价覆盖 AI 价格，market_source = "立创商城" |
+| `unverified` | Playwright 失败 | 未验证 ❓ | 保留 AI 价格，提示用户自行确认 |
+
+**返回 JSON 结构**：
+
+```json
+{
+  "step2_verified": true,
+  "price_realtime": 12.50,
+  "price_ai": 11.80,
+  "price_diff_pct": 5.9,
+  "confidence": "verified",
+  "laddered_prices": [
+    {"qty": 10, "price": 12.50},
+    {"qty": 100, "price": 11.20},
+    {"qty": 1000, "price": 9.80}
+  ],
+  "source": "szlcsc.com",
+  "verified_at": "2024-01-01T12:00:00"
+}
 ```
 
 **不验证的情况**：
-- 博查/IQS 返回的链接指向 1688、淘宝等非确认商城 → 跳过
-- 博查/IQS 没有返回链接 → 跳过
-- WebFetch 返回 403 / 超时 / 无价格数据 → 跳过，不降级到逐个爬商城
+- Step 0 已经成功获取立创商城价格 → 不需要再验证
+- Step 1 博查和 IQS 都没有价格 → 跳过
+- Playwright 超时 / 触发频率限制 → 打标 `unverified`，不重试
+
+**confidence 对 market_source 的影响**：
+
+| confidence | market_source | market_url |
+|-----------|--------------|------------|
+| `verified` | 保持原值（"博查+IQS"/"博查搜索"/"IQS搜索"） | 保持原值 |
+| `suspicious` | 覆盖为 "立创商城" | `https://www.szlcsc.com/search?q={型号}` |
+| `unverified` | 保持原值 | 保持原值 |
 
 ---
 #### Step 3: 买手全网查询（所有元器件必查）
@@ -687,10 +762,11 @@ python3 scripts/search_price.py --keyword='{型号}' --source=0
 
 | 来源场景 | 标注格式 | 示例 |
 |---------|---------|------|
+| 华秋商城直搜 | `华秋商城 ¥X.XX ↗` | `华秋商城 ¥30.14 ↗` |
 | 立创BOM批量配单 | `立创BOM ¥X.XX ↗` | `立创BOM ¥8.68 ↗` |
-| 博查+IQS一致 + WebFetch验证商城 | `{商城名} ¥X.XX ↗` | `华秋商城 ¥5.20 ↗` |
+| 博查+IQS一致 + Playwright验证通过 | `{商城名} ¥X.XX ↗` | `立创商城 ¥5.20 ↗` |
 | 博查+IQS一致（未验证商城） | `博查+IQS ¥X.XX` | `博查+IQS ¥8.50` |
-| IQS独有 + WebFetch验证商城 | `{商城名} ¥X.XX ↗` | `华秋商城 ¥5.20 ↗` |
+| IQS独有 + Playwright验证通过 | `{商城名} ¥X.XX ↗` | `立创商城 ¥5.20 ↗` |
 | IQS独有（未验证） | `IQS ¥X.XX` | `IQS ¥6.64` |
 | 博查独有（未验证） | `博查 ¥X.XX` | `博查 ¥1.23` |
 | 存疑（价差>20%） | `存疑 ¥X.XX（博查¥A/IQS¥B）` | `存疑 ¥5.20（博查¥8.50/IQS¥5.20）` |
@@ -703,8 +779,11 @@ python3 scripts/search_price.py --keyword='{型号}' --source=0
 
 | 场景 | note 内容 |
 |------|----------|
+| 华秋+立创双源验证 | "华秋商城+立创商城（双源验证）" |
+| 华秋商城成功 | "华秋商城" |
+| 立创商城成功 | "立创商城" |
 | 立创BOM成功 | "立创BOM批量配单（实时）" |
-| 博查+IQS一致，WebFetch确认商城 | "博查+IQS交叉验证，WebFetch确认{商城名}" |
+| 博查+IQS一致，Playwright验证商城 | "博查+IQS交叉验证，Playwright确认{商城名}" |
 | 博查+IQS一致，未验证商城 | "博查+IQS交叉验证（未经商城确认）" |
 | 博查独有 | "博查搜索" |
 | IQS独有 | "IQS搜索" |
@@ -725,7 +804,7 @@ python3 scripts/search_price.py --keyword='{型号}' --source=0
 **① `price_market`（商城价）= 最可靠的搜索价格**
 
 ```
-优先级: 立创BOM配单价 > WebFetch验证商城价 > 博查/IQS搜索价
+优先级: 立创BOM配单价 > Playwright实时验证商城价 > 博查/IQS搜索价
 price_market = 上述来源中的最低价
 ```
 
@@ -738,10 +817,10 @@ price_market = 上述来源中的最低价
 
 ```
 根据实际获取渠道填写:
-  → "立创商城"    （立创BOM批量配单 或 WebFetch 验证立创）
-  → "华秋商城"    （WebFetch 验证华秋）
-  → "云汉芯城"    （WebFetch 验证云汉）
-  → "LCSC国际站"  （WebFetch 验证 LCSC）
+  → "立创商城"    （立创BOM批量配单 或 Playwright 实时验证立创）
+  → "华秋商城"    （Playwright 实时验证华秋）
+  → "云汉芯城"    （Playwright 实时验证云汉）
+  → "LCSC国际站"  （Playwright 实时验证 LCSC）
   → "博查+IQS"    （双源搜索，未经商城验证）
   → "博查搜索"    （仅博查有结果）
   → "IQS搜索"     （仅 IQS 有结果）
@@ -785,14 +864,14 @@ found=false 时必须填，参考上方经验估算参考值表
   price_ecommerce: 10.20
   found: true
 
-场景B: 博查+IQS一致 + WebFetch验证华秋 + 买手有结果
+场景B: 博查+IQS一致 + Playwright实时验证立创 + 买手有结果
   price_market: 5.20
-  market_source: "华秋商城"
-  market_url: "https://www.hqchip.com/product/xxx"
+  market_source: "立创商城"
+  market_url: "https://www.szlcsc.com/search?q=..."
   price_ecommerce: 8.80
   found: true
 
-场景C: 仅博查有结果 + WebFetch失败 + 买手无结果
+场景C: 仅博查有结果 + Playwright验证失败 + 买手无结果
   price_market: 0.45
   market_source: "博查搜索"
   market_url: ""
@@ -844,7 +923,7 @@ found=false 时必须填，参考上方经验估算参考值表
 **① `price_market`（商城价）= 最可靠的搜索价格**
 
 ```
-优先级: 立创BOM配单价 > WebFetch验证商城价 > 博查/IQS搜索价
+优先级: 立创BOM配单价 > Playwright实时验证商城价 > 博查/IQS搜索价
 price_market = 上述来源中的最低价
 ```
 
@@ -858,10 +937,10 @@ price_market = 上述来源中的最低价
 
 ```
 根据实际获取渠道填写:
-  → "立创商城"    （立创BOM批量配单 或 WebFetch 验证立创）
-  → "华秋商城"    （WebFetch 验证华秋）
-  → "云汉芯城"    （WebFetch 验证云汉）
-  → "LCSC国际站"  （WebFetch 验证 LCSC）
+  → "立创商城"    （立创BOM批量配单 或 Playwright 实时验证立创）
+  → "华秋商城"    （Playwright 实时验证华秋）
+  → "云汉芯城"    （Playwright 实时验证云汉）
+  → "LCSC国际站"  （Playwright 实时验证 LCSC）
   → "博查+IQS"    （双源搜索，未经商城验证）
   → "博查搜索"    （仅博查有结果）
   → "IQS搜索"     （仅 IQS 有结果）
@@ -908,14 +987,14 @@ found=false 时必须填，参考第3步经验估算参考值表
   price_ecommerce: 10.20
   found: true
 
-场景B: 博查+IQS一致 + WebFetch验证华秋 + 买手有结果
+场景B: 博查+IQS一致 + Playwright实时验证立创 + 买手有结果
   price_market: 5.20
-  market_source: "华秋商城"
-  market_url: "https://www.hqchip.com/product/xxx"
+  market_source: "立创商城"
+  market_url: "https://www.szlcsc.com/search?q=..."
   price_ecommerce: 8.80
   found: true
 
-场景C: 仅博查有结果 + WebFetch失败 + 买手无结果
+场景C: 仅博查有结果 + Playwright验证失败 + 买手无结果
   price_market: 0.45
   market_source: "博查搜索"
   market_url: ""
