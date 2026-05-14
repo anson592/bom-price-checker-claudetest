@@ -1,4 +1,4 @@
----name: bom-price-checkerdescription: 从产品需求反推BOM清单（支持经济版/标准版/高性能版多版本对比选择，show_widget可视化表格展示），或直接读取BOM表，按元器件类别分级查询价格（立创/华秋直搜最高优先/双源交叉验证+Playwright实时点验/IQS全网比价），生成带来源链接的比价单。支持博查AI搜索+IQS/ai/answer并行交叉验证，HTML表格预览，默认2000套批量价比价。version: 8.6.0
+---name: bom-price-checkerdescription: 从产品需求反推BOM清单（支持经济版/标准版/高性能版多版本对比选择，show_widget可视化表格展示），或直接读取BOM表，按元器件类别分级查询价格（立创/华秋直搜最高优先/双源交叉验证+Playwright实时点验/IQS全网比价），生成带来源链接的比价单。支持博查AI搜索+IQS并行交叉验证，HTML表格预览，默认2000套批量价比价。version: 9.0.1
 date: 2026-05-14trigger:  - "帮我查BOM价格"  - "BOM询价"  - "批量查价"  - "查询元器件价格"  - "我要做一个"  - "帮我选型"  - "成本预估"  - "BOM预估"  - "产品成本分析"---
 # BOM 价格查询助手
 ## 你的角色
