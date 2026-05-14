@@ -564,8 +564,8 @@ with open('BOM_反推.csv', 'w', newline='', encoding='utf-8-sig') as f:
    - **Step 2：汇总写入 JSON**
 3. 收集所有价格数据
 4. 将真实价格写入 JSON（禁止用估算代替查询结果）
-5. 执行 `build_bom_json.py`
-6. 执行 `generate_report.py`
+5. 直接组装最终 JSON（字段对标 HTML 模板）
+6. 执行 `generate_report.py` 生成 HTML 报告
 
 **价格优先级：商城价 > AI价**
 - 商城价查不到 → 留空，不覆盖
@@ -916,8 +916,6 @@ price_mall = 上述来源中的最低价
 
 **② `mall_source`（商城价来源描述）**
 
-> ⚠️ 以下是**输入 JSON 的字段名**（大模型填写阶段）。`build_bom_json.py` 转换后，输出标准 JSON 里此字段改名为 `source`，对应的链接字段改名为 `source_url`，HTML 模板读取的是 `source` / `source_url`。
-
 ```
 根据实际获取渠道填写:
   → "立创商城"    （立创BOM批量配单 或 Playwright 实时验证立创）
@@ -1054,8 +1052,6 @@ price_mall = 上述来源中的最低价
 
 **② `mall_source`（商城价来源描述）**
 
-> ⚠️ 以下是**输入 JSON 的字段名**（大模型填写阶段）。`build_bom_json.py` 转换时读取 `mall_source`，做白名单判断后，输出标准 JSON 里改名为 `source`；对应的链接字段 `mall_url` 改名为 `source_url`。HTML 模板读取的是 `source` / `source_url`，不直接读 `mall_source` / `mall_url`。
-
 ```
 根据实际获取渠道填写:
   → "立创商城"    （立创BOM批量配单 或 Playwright 实时验证立创）
@@ -1068,8 +1064,8 @@ price_mall = 上述来源中的最低价
   → ""            （全都没搜到）
 ```
 
-- `mall_source` 含白名单关键词（立创/华秋/云汉/LCSC）→ `build_bom_json.py` 保留 URL，输出 `mall_url` 有值 → HTML 显示可点击链接
-- `mall_source` 为其他值 → `build_bom_json.py` 清空 URL，`mall_url = ""` → HTML 显示纯文字，无链接
+- `mall_source` 含立创/华秋/云汉/LCSC → `mall_url` 填链接，HTML 可点击
+- `mall_source` 为其他值（博查/IQS/经验预估）→ `mall_url` 留空，HTML 无链接
 
 **③ `mall_url`（商城确认链接）**
 
@@ -1147,19 +1143,23 @@ found=false 时必须填，参考第3步经验估算参考值表
   price_ai: null
   ai_source: "经验预估"
   found: false
-```#### 5.3 组装输入 JSON 并生成报告
+```
 
-所有元器件询价完成后，大模型执行以下步骤：
+#### 5.3 组装最终 JSON 并生成报告
 
-**Step A：构建完整 JSON**
+**重要原则：价格直接抄，不计算，不转换。**
 
-用 Python 将询价结果写入 JSON 文件，结构参考 `schema/bom-input-example.json`：
+大模型直接组装对标 HTML 模板的最终 JSON，然后调用 `generate_report.py` 生成报告。
+
+**Step A：组装最终 JSON**
+
+用 Python 将询价结果写入 JSON 文件，字段结构**直接对标 HTML 模板**：
 
 ```python
 import json
 from datetime import datetime
 
-bom_input = {
+bom_final = {
     "project": "<项目名称>",
     "date": datetime.now().strftime("%Y-%m-%d"),
     "quantity": "<产量描述>",
@@ -1191,11 +1191,13 @@ bom_input = {
                     "package": "SMD-18",
                     "part_number": "ESP32-C3-MINI-1-N4",
                     "description": "160MHz RISC-V, WiFi+BLE5",
-                    "price_mall": 8.5,
-                    "mall_source": "立创商城",
-                    "mall_url": "https://www.szlcsc.com/product/xxx",
-                    "price_ai": 12,
-                    "ecommerce_source": "IQS全网",
+                    # ↓↓↓ 价格字段：直接抄查询结果，不计算 ↓↓↓
+                    "price_mall": 8.5,                    # 商城价：搜到什么填什么，两个商城取最低
+                    "mall_source": "立创商城",            # 来源：立创/华秋/云汉/LCSC/博查搜索/IQS搜索
+                    "mall_url": "https://www.szlcsc.com/product/xxx",  # 仅立创/华秋/云汉/LCSC有链接
+                    "price_ai": 12,                      # AI价：博查/IQS查到什么填什么
+                    "ai_source": "博查",                  # 来源：博查/iqs/经验预估
+                    "price_unit": 8.5,                   # 小计：mall优先；mall空才用price_ai
                     "found": True,
                     "func_impact_score": 50,
                     "exp_impact_score": 50
@@ -1211,45 +1213,53 @@ bom_input = {
             "package": "0603",
             "part_number": "100nF 0603",
             "description": "MLCC, 50V, 10%",
-            "price_mall": None,
-            "mall_source": "",
-            "mall_url": "",
-            "price_ai": None,
-            "ecommerce_source": "",
-            "found": False,
+            # ↓↓↓ 价格字段：商城价查不到时用 AI 价，都没有则用经验估算 ↓↓↓
+            "price_mall": None,               # 商城价：搜到什么填什么，查不到填 null
+            "mall_source": "",                 # 来源
+            "mall_url": "",                   # 链接（仅立创/华秋/云汉/LCSC有）
+            "price_ai": None,                 # AI价：博查/IQS查不到填 null
+            "ai_source": "经验预估",            # AI价查不到时填"经验预估"
+            "price_unit": 0.03,                # 小计：商城优先；商城空用AI；都没有用经验估算
+            "found": True,
             "cost_tier": "low",
             "func_impact": "去耦电容影响电源稳定性",
             "exp_impact": "影响长期可靠性",
             "func_impact_label": "一般",
             "exp_impact_label": "一般",
             "user_value": 2,
-            "note": "通用料，价格极低",
-            "price_estimated_experience": 0.03
+            "note": "通用料，价格极低"
         }
     ]
 }
 
-output_path = f"data/{bom_input['project']}_query.json"
+output_path = f"data/{bom_final['project']}_final.json"
 with open(output_path, "w", encoding="utf-8") as f:
-    json.dump(bom_input, f, ensure_ascii=False, indent=2)
+    json.dump(bom_final, f, ensure_ascii=False, indent=2)
 ```
 
-**Step B：调用管线自动生成报告**
+**价格字段填写规则（直接抄，不计算）：**
+
+| 字段 | 填什么 | 示例 |
+|------|--------|------|
+| `price_mall` | 商城搜到的最低价 | `30.00` |
+| `mall_source` | 商城来源 | `"立创商城"` |
+| `mall_url` | 商城链接（仅立创/华秋/云汉/LCSC有） | `"https://..."` |
+| `price_ai` | 博查/IQS查到的价格 | `28.50` |
+| `ai_source` | AI来源 | `"博查"` 或 `"iqs"` 或 `"经验预估"` |
+| `price_unit` | 小计：mall优先；mall空用price_ai | `30.00` |
+| `found` | mall或ai至少一个有值 | `True` |
+
+**Step B：生成 HTML 报告**
 
 ```bash
 cd ~/.workbuddy/skills/bom-price-checker
-python3 build_bom_json.py data/<项目名>_query.json
+python3 generate_report.py data/<项目名>_final.json
 ```
-
-这一条命令会自动完成：
-1. `build_bom_json.py`：读取输入 JSON → 计算 price_estimated / cost_ratio → 过滤白名单链接 → 输出标准 JSON
-2. `generate_report.py`（自动调用）：标准 JSON → 注入 report-template.html → 输出独立 HTML 报告
 
 **Step C：预览报告**
 
 ```bash
-# 找到生成的报告文件
-ls -t data/*_report.html | head -1
+ls -t data/*.html | head -1
 ```
 
 用 `preview_url` 工具预览生成的 HTML 报告文件。
@@ -1288,9 +1298,7 @@ ls -t data/*_report.html | head -1
 |------|------|
 | `report-template.html` | HTML 报告模板（含 JS 渲染逻辑） |
 | `generate_report.py` | 标准 JSON → HTML 报告生成脚本 |
-| `build_bom_json.py` | 询价输入 JSON → 标准 JSON 转换脚本 |
 | `schema/bom-output-schema.json` | 标准输出 JSON Schema |
-| `schema/bom-input-example.json` | 输入 JSON 示例（参考用） |
 | `README_WORKFLOW.md` | 工作流详细文档 |
 
 ---

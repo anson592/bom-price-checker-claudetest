@@ -5,27 +5,25 @@
 ```
 询价完成
   ↓
-填写输入 JSON（包含商城价/电商价原始数据）
+直接组装最终 JSON（字段对标 HTML 模板）
   ↓
-python3 build_bom_json.py data/xxx-query.json
-  ↓
-输出标准 JSON（直接给 generate_report.py 用）
-  ↓
-python3 generate_report.py data/xxx_2026-05-13.json
+python3 generate_report.py data/xxx_final.json
   ↓
 生成 HTML 报告（可预览/分享）
 ```
 
+**重要原则：价格直接抄，不计算，不转换。**
+
 ---
 
-## 第一步：填写输入 JSON
+## 第一步：组装最终 JSON
 
-询价完成后，填写以下格式的输入文件（参考 `schema/bom-input-example.json`）：
+询价完成后，填写以下格式的文件，字段**直接对标 HTML 模板**：
 
 ```json
 {
   "project": "项目名称",
-  "date": "2026-05-13",
+  "date": "2026-05-14",
   "quantity": "2000套",
   "total_quantity": "100000",
   "batch_quantity": "5000",
@@ -51,11 +49,13 @@ python3 generate_report.py data/xxx_2026-05-13.json
           "package": "SMD-18",
           "part_number": "ESP32-C3-MINI-1-N4",
           "description": "...",
-          "price_market": 8.5,           // ← 询价填写
-          "market_source": "立创商城",      // ← 询价填写
-          "market_url": "https://...",      // ← 询价填写（仅确认商城才有）
-          "price_ecommerce": 12,            // ← 询价填写
-          "found": true,                   // ← 询价填写
+          "price_mall": 8.5,              // 商城价：搜到什么填什么，两个商城取最低
+          "mall_source": "立创商城",        // 来源：立创/华秋/云汉/LCSC/博查搜索/IQS搜索
+          "mall_url": "https://...",        // 仅立创/华秋/云汉/LCSC有链接
+          "price_ai": 12,                  // AI价：博查/IQS查到什么填什么
+          "ai_source": "博查",              // 来源：博查/iqs/经验预估
+          "price_unit": 8.5,               // 小计：mall优先；mall空用price_ai
+          "found": true,
           "func_impact_score": 50,
           "exp_impact_score": 50
         }
@@ -69,53 +69,38 @@ python3 generate_report.py data/xxx_2026-05-13.json
       "package": "SMD",
       "part_number": "USB-C 插座 16P",
       "description": "...",
-      "price_market": 1.5,
-      "market_source": "经验估算",
-      "market_url": "",
-      "price_ecommerce": 2.5,
-      "found": false,
-      "note": "经验估算",
-      "price_estimated_experience": 1.27
+      "price_mall": null,                 // 商城价：查不到填 null
+      "mall_source": "",                   // 来源
+      "mall_url": "",                     // 链接（仅立创/华秋/云汉/LCSC有）
+      "price_ai": null,                   // AI价：查不到填 null
+      "ai_source": "经验预估",              // AI价查不到时填"经验预估"
+      "price_unit": 1.50,                 // 小计：商城优先；商城空用AI；都没有用经验估算
+      "found": true,
+      "note": "经验估算"
     }
   ]
 }
 ```
 
-### 字段说明
+### 价格字段填写规则（直接抄，不计算）
 
-| 字段 | 填写人 | 说明 |
+| 字段 | 填什么 | 示例 |
 |------|--------|------|
-| `price_market` | 询价 | 商城价（立创/华秋/云汉/LCSC 最低） |
-| `market_source` | 询价 | 商城价来源描述，如"立创商城"、"华秋商城" |
-| `market_url` | 询价 | 商城确认链接，**仅确认商城来源才填** |
-| `price_ecommerce` | 询价 | 电商价（买手全网最低含券） |
-| `found` | 询价 | `true`=搜到真实价格，`false`=只有经验估算 |
-| `price_estimated_experience` | 询价 | 经验估算价（无搜索价时使用） |
+| `price_mall` | 商城搜到的最低价 | `30.00` |
+| `mall_source` | 商城来源 | `"立创商城"` |
+| `mall_url` | 商城链接（仅立创/华秋/云汉/LCSC有） | `"https://..."` |
+| `price_ai` | 博查/IQS查到的价格 | `28.50` |
+| `ai_source` | AI来源 | `"博查"` 或 `"iqs"` 或 `"经验预估"` |
+| `price_unit` | 小计：mall优先；mall空用price_ai | `30.00` |
+| `found` | mall或ai至少一个有值 | `True` |
 
 ---
 
-## 第二步：生成标准 JSON
+## 第二步：生成 HTML 报告
 
 ```bash
-cd /Users/lizhengan/Desktop/赢他
-python3 build_bom_json.py data/xxx-query.json
-```
-
-**自动计算字段：**
-- `price_estimated` = `min(price_market, price_ecommerce) × 0.85`（有搜索价时）
-- `price_estimated` = `price_estimated_experience`（无搜索价时）
-- `source` / `source_url` = 仅当 `market_source` 含"立创/华秋/云汉/LCSC"才保留
-- `cost_ratio` = 在所有 item 处理完后自动计算
-
-输出文件：`data/<项目名>_<日期>.json`
-
----
-
-## 第三步：生成 HTML 报告
-
-```bash
-cd /Users/lizhengan/Desktop/赢他
-python3 generate_report.py data/<项目名>_<日期>.json
+cd ~/.workbuddy/skills/bom-price-checker
+python3 generate_report.py data/<项目名>_final.json
 ```
 
 输出文件：`data/<项目名>_<日期>_report.html`
@@ -129,7 +114,5 @@ python3 generate_report.py data/<项目名>_<日期>.json
 | 文件 | 作用 |
 |------|------|
 | `schema/bom-output-schema.json` | 标准输出 JSON Schema（对接模板） |
-| `schema/bom-input-example.json` | 输入 JSON 示例（询价填写） |
-| `build_bom_json.py` | 输入→标准输出 转换脚本 |
 | `generate_report.py` | 标准 JSON→HTML 报告 生成脚本 |
 | `report-template.html` | HTML 报告模板 |
