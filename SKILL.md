@@ -1,4 +1,4 @@
----name: bom-price-checkerdescription: 从产品需求反推BOM清单（支持经济版/标准版/高性能版多版本对比选择，show_widget可视化表格展示），或直接读取BOM表，按元器件类别分级查询价格（立创/华秋直搜最高优先/双源交叉验证+Playwright实时点验/买手全网比价），生成带来源链接的比价单。支持博查AI搜索+IQS/ai/answer并行交叉验证，HTML表格预览，默认2000套批量价比价。version: 8.6.0
+---name: bom-price-checkerdescription: 从产品需求反推BOM清单（支持经济版/标准版/高性能版多版本对比选择，show_widget可视化表格展示），或直接读取BOM表，按元器件类别分级查询价格（立创/华秋直搜最高优先/双源交叉验证+Playwright实时点验/IQS全网比价），生成带来源链接的比价单。支持博查AI搜索+IQS/ai/answer并行交叉验证，HTML表格预览，默认2000套批量价比价。version: 8.6.0
 date: 2026-05-14trigger:  - "帮我查BOM价格"  - "BOM询价"  - "批量查价"  - "查询元器件价格"  - "我要做一个"  - "帮我选型"  - "成本预估"  - "BOM预估"  - "产品成本分析"---
 # BOM 价格查询助手
 ## 你的角色
@@ -20,19 +20,18 @@ date: 2026-05-14trigger:  - "帮我查BOM价格"  - "BOM询价"  - "批量查价
 | # | 检查项 | 优先级 | 检查命令 | 缺失影响 | 自动安装命令 |
 |---|--------|--------|----------|----------|-------------|
 | 1 | **Python 3.11+** | P0 | `python3 --version` | 脚本全部无法运行 | 提示用户手动安装（系统级依赖） |
-| 2 | **requests 库** | P0 | `python3 -c "import requests"` | 博查/IQS/买手脚本报错 | `pip3 install requests` |
+| 2 | **requests 库** | P0 | `python3 -c "import requests"` | 博查/IQS/商城查询报错 | `pip3 install requests` |
 | 3 | **openpyxl 库** | P0 | `python3 -c "import openpyxl"` | Excel 读写失败 | `pip3 install openpyxl` |
 | 4 | **博查搜索连通性** | P1 | `python3 scripts/shengsuan_search.py "测试" --json 2>&1 \| head -5` | 博查搜索不可用 | 脚本内置 API Key，失败则提示检查网络 |
-| 5 | **买手搜索连通性** | P1 | `python3 scripts/search_price.py "测试" --json 2>&1 \| head -5` | 买手全网比价不可用 | 脚本内置 API Key，失败则提示检查网络 |
-| 6 | **IQS 搜索连通性** | P1 | `python3 scripts/iqs_search.py "测试" --json 2>&1 \| head -5` | IQS 交叉验证不可用（仅博查单源） | 脚本内置 API Key，额度耗尽提示用户更新 Key |
-| 7 | **playwright Python 库** | P1 | `python3 -c "from playwright.async_api import async_playwright; print('ok')"` | 立创直搜不可用 | `pip3 install playwright && python3 -m playwright install chromium` |
-| 8 | **立创直搜连通性** | P1 | `python3 scripts/lcsc_szlcsc_search.py "ESP32" --json 2>&1 \| head -5` | 立创直搜不可用（降级到博查+IQS） | 检查 playwright 库与 chromium 是否安装 |
-| 9 | **华秋商城连通性** | P1 | `python3 scripts/hqchip_search.py "ESP32" --json 2>&1 \| head -5` | 华秋商城查询不可用 | 脚本已内置，失败则提示检查网络 |
+| 5 | **IQS 搜索连通性** | P1 | `python3 scripts/iqs_search.py "测试" --json 2>&1 \| head -5` | IQS 交叉验证不可用（仅博查单源） | 脚本内置 API Key，额度耗尽提示用户更新 Key |
+| 6 | **playwright Python 库** | P1 | `python3 -c "from playwright.async_api import async_playwright; print('ok')"` | 立创直搜不可用 | `pip3 install playwright && python3 -m playwright install chromium` |
+| 7 | **立创直搜连通性** | P1 | `python3 scripts/lcsc_szlcsc_search.py "ESP32" --json 2>&1 \| head -5` | 立创直搜不可用（降级到博查+IQS） | 检查 playwright 库与 chromium 是否安装 |
+| 8 | **华秋商城连通性** | P1 | `python3 scripts/hqchip_search.py "ESP32" --json 2>&1 \| head -5` | 华秋商城查询不可用 | 脚本已内置，失败则提示检查网络 |
 
 **优先级说明**：
 - **P0（必需）**：缺失则阻塞流程，必须安装后才能继续
 - **P1（推荐）**：缺失则警告但不阻塞，自动降级查询策略
-- **所有 API Key 均已内置**（博查/买手/IQS），开箱即用，无需用户额外配置
+- **所有 API Key 均已内置**（博查/IQS），开箱即用，无需用户额外配置
 - 额度耗尽时会提示用户，但不阻塞主流程
 
 **优先级说明**：
@@ -92,7 +91,7 @@ show_widget(
 环境检查完成，以下依赖需要处理：
 
 【P0 必需 - 阻塞流程】
-❌ requests 库 → 博查/IQS/买手脚本无法运行 → 可自动安装
+❌ requests 库 → 博查/IQS/IQS脚本无法运行 → 可自动安装
 
 【P1 推荐 - 不阻塞但影响功能】
 ⚠️ Playwright MCP 未配置 → 立创BOM批量配单不可用 → 可自动配置
@@ -183,7 +182,7 @@ print(f"IQS API Key 已更新到 scripts/iqs_search.py")
 • 立创直搜（szlcsc.com，连通正常）
 • 华秋商城（hqchip.com，连通正常）
 • 博查搜索（已验证连通，内置 Key）
-• 买手搜索（已验证连通，内置 Key）
+• IQS搜索（已验证连通，内置 Key）
 • IQS 搜索（已验证连通，内置 Key）
 
 所有 API Key 均已内置，开箱即用。
@@ -559,13 +558,20 @@ with open('BOM_反推.csv', 'w', newline='', encoding='utf-8-sig') as f:
 **警告：** 以下顺序不可调换。任何 BOM 分析必须严格按顺序执行。
 
 1. 确定元器件型号列表
-2. **逐个调用查询脚本**（lcsc_szlcsc_search.py / hqchip_search.py / shengsuan_search.py）
+2. **逐个调用查询脚本**：
+   - **Step 0：多商城并行查询**（立创/华秋），取最低价 + 来源 + 链接
+   - **Step 1：AI交叉验证**（博查 + IQS），取最低AI价
+   - **Step 2：汇总写入 JSON**
 3. 收集所有价格数据
 4. 将真实价格写入 JSON（禁止用估算代替查询结果）
 5. 执行 `build_bom_json.py`
 6. 执行 `generate_report.py`
 
-**常见错误：** LLM 跳过第 2 步，直接在 JSON 里写估算价格。这会导致报告中的价格全部错误。
+**价格优先级：商城价 > AI价**
+- 商城价查不到 → 留空，不覆盖
+- AI价查不到 → 才用大模型预估，标注 ai_source = "经验预估"
+
+**常见错误：** LLM 跳过查询步骤，直接写估算价格。这会导致报告中的价格全部错误。
 
 ---
 
@@ -599,9 +605,11 @@ with open('BOM_反推.csv', 'w', newline='', encoding='utf-8-sig') as f:
     │   └─ Playwright 失败 → unverified（未验证 ❓，保留 AI 价格）
     └─ Step 1 无结果 → 跳过，直接进 Step 3
 
-  Step 3: 买手全网查询（所有元器件必查）
-    ├─ 有结果 → price_ecommerce = 最低含券价
-    └─ 无结果 → price_ecommerce = null（HTML 显示 "-"）
+  Step 3: AI价查询（商城价查不到时）
+    ├─ 商城价查到 → 无需查询AI价
+    ├─ 商城价未查到 → 查询 AI 价（博查 + IQS 并行）
+    ├─ AI价查到 → price_ai = 最低AI价，ai_source = "博查"/"iqs"
+    └─ AI价查不到 → price_ai = null，标注 ai_source = "经验预估"（让大模型估算）
 ```
 
 #### Step 0: 华秋商城 + 立创商城并行查询（★最高优先，无需登录）
@@ -671,21 +679,21 @@ with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
 并行查询华秋 + 立创（2-3秒）
   ├─ 双源都成功
   │   ├─ 价格差异 < 20%
-  │   │   → price_market = min(华秋价格, 立创价格)
-  │   │   → market_source = "华秋商城+立创商城（双源验证）"
+  │   │   → price_mall = min(华秋价格, 立创价格)
+  │   │   → mall_source = "华秋商城+立创商城（双源验证）"
   │   │   → 跳过 Step 1、Step 2
   │   └─ 价格差异 >= 20%
-  │       → price_market = 华秋价格
-  │       → market_source = "华秋商城"
+  │       → price_mall = 华秋价格
+  │       → mall_source = "华秋商城"
   │       → 备注：立创价格差异 X 元（Y%）
   │       → 跳过 Step 1、Step 2
   ├─ 仅华秋成功
-  │   → price_market = 华秋价格
-  │   → market_source = "华秋商城"
+  │   → price_mall = 华秋价格
+  │   → mall_source = "华秋商城"
   │   → 跳过 Step 1、Step 2
   ├─ 仅立创成功
-  │   → price_market = 立创价格
-  │   → market_source = "立创商城"
+  │   → price_mall = 立创价格
+  │   → mall_source = "立创商城"
   │   → 跳过 Step 1、Step 2
   └─ 双源都失败
       → 降级到 Step 1（博查+IQS）
@@ -695,7 +703,7 @@ with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
 - 并行查询耗时 = max(华秋耗时, 立创耗时) ≈ 2-3秒
 - 华秋商城：裸 requests，2-3秒，无反爬
 - 立创商城：Playwright，3-5秒，连续4次会触发登录（脚本已处理）
-- Step 0 成功的元器件**仍然需要查买手全网**（Step 3），以获取电商对比价
+- Step 0 成功的元器件**仍然需要查IQS全网**（Step 3），以获取电商对比价
 - Step 0 成功的元器件跳过 Step 1 和 Step 2
 
 ---
@@ -718,7 +726,7 @@ python3 scripts/iqs_search.py '{型号} 价格 批量' --cross-verify --json
 
 **交叉验证结果处理**：
 
-| 场景 | 处理方式 | market_source 填写 |
+| 场景 | 处理方式 | mall_source 填写 |
 |------|----------|-------------------|
 | 两源一致（价差 < 20%） | 取较低值或平均值 | "博查+IQS" |
 | IQS 独有 | 记录 IQS 价格 | "IQS搜索" |
@@ -764,7 +772,7 @@ python3 scripts/lcsc_playwright_verify.py '{型号}' --ai-price {Step1价格} --
 | confidence | 差价 | 含义 | 后续处理 |
 |-----------|------|------|---------|
 | `verified` | < 15% | 已验证 ✅ | 以 AI 价格为准 |
-| `suspicious` | ≥ 15% | 存疑 ⚠️ | 以 Playwright 实测价覆盖 AI 价格，market_source = "立创商城" |
+| `suspicious` | ≥ 15% | 存疑 ⚠️ | 以 Playwright 实测价覆盖 AI 价格，mall_source = "立创商城" |
 | `unverified` | Playwright 失败 | 未验证 ❓ | 保留 AI 价格，提示用户自行确认 |
 
 **返回 JSON 结构**：
@@ -791,23 +799,27 @@ python3 scripts/lcsc_playwright_verify.py '{型号}' --ai-price {Step1价格} --
 - Step 1 博查和 IQS 都没有价格 → 跳过
 - Playwright 超时 / 触发频率限制 → 打标 `unverified`，不重试
 
-**confidence 对 market_source 的影响**：
+**confidence 对 mall_source 的影响**：
 
-| confidence | market_source | market_url |
+| confidence | mall_source | mall_url |
 |-----------|--------------|------------|
 | `verified` | 保持原值（"博查+IQS"/"博查搜索"/"IQS搜索"） | 保持原值 |
 | `suspicious` | 覆盖为 "立创商城" | `https://www.szlcsc.com/search?q={型号}` |
 | `unverified` | 保持原值 | 保持原值 |
 
 ---
-#### Step 3: 买手全网查询（所有元器件必查）
+#### Step 3: AI价查询（商城价查不到时调用）
 
-> 不管前面的步骤有没有查到商城价，**所有元器件都要查买手全网**，以获取电商对比价。
+> 商城价已查到则跳过；商城价未查到才查询 AI 价（博查 + IQS 并行）。
 
 **调用方式**：
 
 ```bash
-python3 scripts/search_price.py --keyword='{型号}' --source=0
+# 博查 AI 查询
+python3 scripts/shengsuan_search.py '{型号} 价格' --json
+
+# IQS 查询
+python3 scripts/iqs_search.py '{型号}' --json
 ```
 
 **参数说明**：
@@ -823,8 +835,8 @@ python3 scripts/search_price.py --keyword='{型号}' --source=0
 
 **处理逻辑**：
 1. 运行命令，获取结果
-2. 提取所有平台的最低 `actualPrice` → `price_ecommerce`
-3. 无结果或报错 → `price_ecommerce = null`（HTML 显示 "-"）
+2. 提取所有平台的最低 `actualPrice` → `price_ai`
+3. 无结果或报错 → `price_ai = null`（HTML 显示 "-"）
 
 ---
 #### 经验估算（所有来源均失败时的兜底）
@@ -861,10 +873,10 @@ python3 scripts/search_price.py --keyword='{型号}' --source=0
 | IQS独有（未验证） | `IQS ¥X.XX` | `IQS ¥6.64` |
 | 博查独有（未验证） | `博查 ¥X.XX` | `博查 ¥1.23` |
 | 存疑（价差>20%） | `存疑 ¥X.XX（博查¥A/IQS¥B）` | `存疑 ¥5.20（博查¥8.50/IQS¥5.20）` |
-| 买手全网 | `买手 ¥X.XX（来源：平台名）` | `买手 ¥1.15（拼多多）` |
+| IQS全网 | `IQS ¥X.XX（来源：平台名）` | `IQS ¥1.15（拼多多）` |
 | 经验估算 | `经验估算 ¥X.XX` | `经验估算 ¥0.01` |
 
-**HTML 输出时**，`↗` 仅在 `market_source` 含白名单关键词（立创/华秋/云汉/LCSC）且 `market_url` 有值时用 `<a>` 标签实现可点击链接。其他情况显示纯文字。
+**HTML 输出时**，`↗` 仅在 `mall_source` 含白名单关键词（立创/华秋/云汉/LCSC）且 `mall_url` 有值时用 `<a>` 标签实现可点击链接。其他情况显示纯文字。
 
 **备注（note）字段规则**：
 
@@ -892,17 +904,17 @@ python3 scripts/search_price.py --keyword='{型号}' --source=0
 
 每颗元器件查询完成后，按以下规则映射为输入 JSON 字段：
 
-**① `price_market`（商城价）= 最可靠的搜索价格**
+**① `price_mall`（商城价）= 最可靠的搜索价格**
 
 ```
 优先级: 立创BOM配单价 > Playwright实时验证商城价 > 博查/IQS搜索价
-price_market = 上述来源中的最低价
+price_mall = 上述来源中的最低价
 ```
 
-- 所有来源均无结果 → `price_market = null`
+- 所有来源均无结果 → `price_mall = null`
 - 立创BOM批量配单的价格直接采纳（最权威）
 
-**② `market_source`（商城价来源描述）**
+**② `mall_source`（商城价来源描述）**
 
 > ⚠️ 以下是**输入 JSON 的字段名**（大模型填写阶段）。`build_bom_json.py` 转换后，输出标准 JSON 里此字段改名为 `source`，对应的链接字段改名为 `source_url`，HTML 模板读取的是 `source` / `source_url`。
 
@@ -918,64 +930,82 @@ price_market = 上述来源中的最低价
   → ""            （全都没搜到）
 ```
 
-**③ `market_url`（商城确认链接）**
+**③ `mall_url`（商城确认链接）**
 
 ```
 仅确认商城（立创/华秋/云汉/LCSC）且验证成功时才填 URL
 其他来源一律留空字符串 ""
 ```
 
-**④ `price_ecommerce`（电商价）= 买手全网最低含券价**
+**④ `price_ai`（AI价）= 博查/IQS 最低价**
 
 ```
-price_ecommerce = 买手全网搜索结果中的最低 actualPrice
-买手无结果 → price_ecommerce = null
+price_ai = 博查或IQS查询结果中的最低价
+AI查不到 → price_ai = null
+```
+
+**④.5 `ai_source`（AI来源，无链接）**
+
+```
+ai_source = "博查"   → 博查AI查询到的价格
+ai_source = "iqs"   → IQS查询到的价格
+ai_source = "经验预估" → AI价查不到，大模型预估
 ```
 
 **⑤ `found`（是否搜到真实价格）**
 
 ```
-found = true  → price_market 或 price_ecommerce 至少一个非 null
-found = false → 两者都为 null，只有经验估算
+found = true  → price_mall 或 price_ai 至少一个非 null
+found = false → 两者都为 null，只有经验预估
 ```
 
-**⑥ `price_estimated_experience`（经验估算价，仅 found=false 时需要）**
+**⑥ `经验预估`（仅 found=false 且 ai_source="经验预估" 时）**
 
 ```
-found=false 时必须填，参考上方经验估算参考值表
+大模型根据常识估算价格，标注 ai_source = "经验预估"
 ```
 
 **映射示例**：
 
 ```
-场景A: 立创BOM配单成功 + 买手有结果
-  price_market: 8.68
-  market_source: "立创商城"
-  market_url: "https://bom.szlcsc.com/..."
-  price_ecommerce: 10.20
+场景A: 立创BOM配单成功 + IQS有结果
+  price_mall: 8.68
+  mall_source: "立创商城"
+  mall_url: "https://bom.szlcsc.com/..."
+  price_ai: 10.20
   found: true
 
-场景B: 博查+IQS一致 + Playwright实时验证立创 + 买手有结果
-  price_market: 5.20
-  market_source: "立创商城"
-  market_url: "https://www.szlcsc.com/search?q=..."
-  price_ecommerce: 8.80
+场景B: 商城查到 + AI查到
+  price_mall: 5.20
+  mall_source: "立创商城"
+  mall_url: "https://www.szlcsc.com/search?q=..."
+  price_ai: 8.80
+  ai_source: "iqs"
   found: true
 
-场景C: 仅博查有结果 + Playwright验证失败 + 买手无结果
-  price_market: 0.45
-  market_source: "博查搜索"
-  market_url: ""
-  price_ecommerce: null
+场景C: 商城查到（来源不确定）+ AI查到
+  price_mall: 0.45
+  mall_source: "华秋商城"
+  mall_url: ""
+  price_ai: null
+  ai_source: null
   found: true
 
-场景D: 全部无结果
-  price_market: null
-  market_source: ""
-  market_url: ""
-  price_ecommerce: null
+场景D: 商城未查到 + AI查到
+  price_mall: null
+  mall_source: null
+  mall_url: null
+  price_ai: 12.00
+  ai_source: "博查"
+  found: true
+
+场景E: 全部未查到
+  price_mall: null
+  mall_source: null
+  mall_url: null
+  price_ai: null
+  ai_source: "经验预估"
   found: false
-  price_estimated_experience: 0.01
 ```
 
 #### 4.2 库存不足的处理
@@ -1011,20 +1041,20 @@ found=false 时必须填，参考上方经验估算参考值表
 
 每颗元器件询价完成后，大模型按以下规则将多平台比价结果映射为输入 JSON 字段：
 
-**① `price_market`（商城价）= 最可靠的搜索价格**
+**① `price_mall`（商城价）= 最可靠的搜索价格**
 
 ```
 优先级: 立创BOM配单价 > Playwright实时验证商城价 > 博查/IQS搜索价
-price_market = 上述来源中的最低价
+price_mall = 上述来源中的最低价
 ```
 
-- 所有来源均无结果 → `price_market = null`
+- 所有来源均无结果 → `price_mall = null`
 - 立创BOM批量配单的价格直接采纳（最权威）
 - 博查/IQS 搜索到的价格也可以直接填入（不需要商城验证）
 
-**② `market_source`（商城价来源描述）**
+**② `mall_source`（商城价来源描述）**
 
-> ⚠️ 以下是**输入 JSON 的字段名**（大模型填写阶段）。`build_bom_json.py` 转换时读取 `market_source`，做白名单判断后，输出标准 JSON 里改名为 `source`；对应的链接字段 `market_url` 改名为 `source_url`。HTML 模板读取的是 `source` / `source_url`，不直接读 `market_source` / `market_url`。
+> ⚠️ 以下是**输入 JSON 的字段名**（大模型填写阶段）。`build_bom_json.py` 转换时读取 `mall_source`，做白名单判断后，输出标准 JSON 里改名为 `source`；对应的链接字段 `mall_url` 改名为 `source_url`。HTML 模板读取的是 `source` / `source_url`，不直接读 `mall_source` / `mall_url`。
 
 ```
 根据实际获取渠道填写:
@@ -1038,31 +1068,39 @@ price_market = 上述来源中的最低价
   → ""            （全都没搜到）
 ```
 
-- `market_source` 含白名单关键词（立创/华秋/云汉/LCSC）→ `build_bom_json.py` 保留 URL，输出 `source_url` 有值 → HTML 显示可点击链接
-- `market_source` 为其他值 → `build_bom_json.py` 清空 URL，`source_url = ""` → HTML 显示纯文字，无链接
+- `mall_source` 含白名单关键词（立创/华秋/云汉/LCSC）→ `build_bom_json.py` 保留 URL，输出 `mall_url` 有值 → HTML 显示可点击链接
+- `mall_source` 为其他值 → `build_bom_json.py` 清空 URL，`mall_url = ""` → HTML 显示纯文字，无链接
 
-**③ `market_url`（商城确认链接）**
+**③ `mall_url`（商城确认链接）**
 
 ```
 仅确认商城（立创/华秋/云汉/LCSC）且验证成功时才填 URL
 其他来源一律留空字符串 ""
 ```
 
-**④ `price_ecommerce`（电商价）= 买手全网最低含券价**
+**④ `price_ai`（AI价）= 博查/IQS 最低价**
 
 ```
-price_ecommerce = 买手全网搜索结果中的最低 actualPrice
-买手无结果 → price_ecommerce = null
+price_ai = 博查或IQS查询结果中的最低价
+AI查不到 → price_ai = null
+```
+
+**④.5 `ai_source`（AI来源，无链接）**
+
+```
+ai_source = "博查"   → 博查AI查询到的价格
+ai_source = "iqs"   → IQS查询到的价格
+ai_source = "经验预估" → AI价查不到，大模型预估
 ```
 
 **⑤ `found`（是否搜到真实价格）**
 
 ```
-found = true  → price_market 或 price_ecommerce 至少一个非 null
-found = false → 两者都为 null，只有经验估算
+found = true  → price_mall 或 price_ai 至少一个非 null
+found = false → 两者都为 null，只有经验预估
 ```
 
-**⑥ `price_estimated_experience`（经验估算价，仅 found=false 时需要）**
+**⑥ `经验预估`（仅 found=false 且 ai_source="经验预估" 时）**
 
 ```
 found=false 时必须填，参考第3步经验估算参考值表
@@ -1071,34 +1109,44 @@ found=false 时必须填，参考第3步经验估算参考值表
 **映射示例**：
 
 ```
-场景A: 立创BOM配单成功 + 买手有结果
-  price_market: 8.68
-  market_source: "立创商城"
-  market_url: "https://bom.szlcsc.com/..."
-  price_ecommerce: 10.20
+场景A: 立创BOM配单成功 + IQS有结果
+  price_mall: 8.68
+  mall_source: "立创商城"
+  mall_url: "https://bom.szlcsc.com/..."
+  price_ai: 10.20
   found: true
 
-场景B: 博查+IQS一致 + Playwright实时验证立创 + 买手有结果
-  price_market: 5.20
-  market_source: "立创商城"
-  market_url: "https://www.szlcsc.com/search?q=..."
-  price_ecommerce: 8.80
+场景B: 商城查到 + AI查到
+  price_mall: 5.20
+  mall_source: "立创商城"
+  mall_url: "https://www.szlcsc.com/search?q=..."
+  price_ai: 8.80
+  ai_source: "iqs"
   found: true
 
-场景C: 仅博查有结果 + Playwright验证失败 + 买手无结果
-  price_market: 0.45
-  market_source: "博查搜索"
-  market_url: ""
-  price_ecommerce: null
+场景C: 商城查到（来源不确定）+ AI查到
+  price_mall: 0.45
+  mall_source: "华秋商城"
+  mall_url: ""
+  price_ai: null
+  ai_source: null
   found: true
 
-场景D: 全部无结果
-  price_market: null
-  market_source: ""
-  market_url: ""
-  price_ecommerce: null
+场景D: 商城未查到 + AI查到
+  price_mall: null
+  mall_source: null
+  mall_url: null
+  price_ai: 12.00
+  ai_source: "博查"
+  found: true
+
+场景E: 全部未查到
+  price_mall: null
+  mall_source: null
+  mall_url: null
+  price_ai: null
+  ai_source: "经验预估"
   found: false
-  price_estimated_experience: 0.01
 ```#### 5.3 组装输入 JSON 并生成报告
 
 所有元器件询价完成后，大模型执行以下步骤：
@@ -1143,11 +1191,11 @@ bom_input = {
                     "package": "SMD-18",
                     "part_number": "ESP32-C3-MINI-1-N4",
                     "description": "160MHz RISC-V, WiFi+BLE5",
-                    "price_market": 8.5,
-                    "market_source": "立创商城",
-                    "market_url": "https://www.szlcsc.com/product/xxx",
-                    "price_ecommerce": 12,
-                    "ecommerce_source": "买手全网",
+                    "price_mall": 8.5,
+                    "mall_source": "立创商城",
+                    "mall_url": "https://www.szlcsc.com/product/xxx",
+                    "price_ai": 12,
+                    "ecommerce_source": "IQS全网",
                     "found": True,
                     "func_impact_score": 50,
                     "exp_impact_score": 50
@@ -1163,10 +1211,10 @@ bom_input = {
             "package": "0603",
             "part_number": "100nF 0603",
             "description": "MLCC, 50V, 10%",
-            "price_market": None,
-            "market_source": "",
-            "market_url": "",
-            "price_ecommerce": None,
+            "price_mall": None,
+            "mall_source": "",
+            "mall_url": "",
+            "price_ai": None,
             "ecommerce_source": "",
             "found": False,
             "cost_tier": "low",
@@ -1229,10 +1277,10 @@ ls -t data/*_report.html | head -1
 | 价格列 | 显示内容 | 可点击链接 | 来源标注 |
 |--------|----------|-----------|---------|
 | **商城价** | 商城最低价 | 仅当来源是确认商城（立创/华秋/云汉/LCSC）且有 URL 时 | 悬停显示来源名 |
-| **电商价** | 买手全网最低含券价 | 无链接 | 不显示 |
+| **电商价** | IQS全网最低含券价 | 无链接 | 不显示 |
 | **预估价** | min(商城价,电商价)*0.85 或经验值 | 无链接 | 不显示 |
 
-**白名单逻辑：** `market_source` 必须包含"立创"或"华秋"或"云汉"或"LCSC"才会有可点击链接。AI搜索（博查/IQS）和买手全网的价格**不会**生成链接。
+**白名单逻辑：** `mall_source` 必须包含"立创"或"华秋"或"云汉"或"LCSC"才会有可点击链接。AI搜索（博查/IQS）和IQS全网的价格**不会**生成链接。
 
 ### 报告模板文件清单
 

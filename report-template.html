@@ -1377,21 +1377,21 @@ svg-icon {
           <div class="price-legend-dot market"></div>
           <div class="price-legend-content">
             <div class="price-legend-name">商城价</div>
-            <div class="price-legend-desc">立创/华秋/云汉/LCSC 商城最低价，含税，经搜索验证</div>
+            <div class="price-legend-desc">立创/华秋/云汉/LCSC 商城最低价，含税，可点击链接</div>
           </div>
         </div>
         <div class="price-legend-item">
           <div class="price-legend-dot ecommerce"></div>
           <div class="price-legend-content">
-            <div class="price-legend-name">电商价</div>
-            <div class="price-legend-desc">买手全网搜索最低价（含优惠券），可能低于商城价</div>
+            <div class="price-legend-name">AI价</div>
+            <div class="price-legend-desc">博查/IQS AI 查询价格，无链接；或大模型预估</div>
           </div>
         </div>
         <div class="price-legend-item">
           <div class="price-legend-dot estimated"></div>
           <div class="price-legend-content">
-            <div class="price-legend-name">预估价</div>
-            <div class="price-legend-desc">按总需求10万套/批5000套综合评估的批量预估价；无搜索价时为经验估算</div>
+            <div class="price-legend-name">小计</div>
+            <div class="price-legend-desc">优先取商城价；商城价查不到取 AI 价</div>
           </div>
         </div>
       </div>
@@ -1409,8 +1409,8 @@ svg-icon {
                 <th style="width:190px">规格</th>
                 <th style="width:76px">封装</th>
                 <th class="num" style="width:78px">商城价</th>
-                <th class="num" style="width:78px">电商价</th>
-                <th class="num" style="width:78px">预估价</th>
+                <th class="num" style="width:78px">AI价</th>
+                <th class="num" style="width:78px">小计</th>
                 <th style="width:200px">功能影响</th>
                 <th style="width:200px">体验影响</th>
                 <th style="width:70px">用户价值</th>
@@ -1523,16 +1523,16 @@ svg-icon {
           const v = item.variants.find(v => v.version === ver);
           if (v) {
             parts++;
-            market += (v.price_market || 0);
-            ecommerce += (v.price_ecommerce || 0);
-            estimated += (v.price_estimated || 0);
+            market += (v.price_mall || 0);
+            ecommerce += (v.price_ai || 0);
+            estimated += (v.price_unit || 0);
             if (!v.found) notFound++;
           }
         } else {
           parts++;
-          market += (item.price_market || 0);
-          ecommerce += (item.price_ecommerce || 0);
-          estimated += (item.price_estimated || 0);
+          market += (item.price_mall || 0);
+          ecommerce += (item.price_ai || 0);
+          estimated += (item.price_unit || 0);
           if (!item.found) notFound++;
         }
       });
@@ -1547,9 +1547,9 @@ svg-icon {
       let price = 0;
       if (item.is_variant) {
         const v = item.variants.find(v => v.version === version);
-        if (v) price = v.price_market || 0;
+        if (v) price = v.price_mall || 0;
       } else {
-        price = item.price_market || 0;
+        price = item.price_mall || 0;
       }
       cats[cat] = (cats[cat] || 0) + price;
     });
@@ -1893,9 +1893,9 @@ svg-icon {
             <td><span class="version-label-badge v${vi}">${esc(v.version)}</span>&nbsp;<span class="part-number">${esc(v.part_number)}</span></td>
             <td><span class="description-text">${esc(v.description)}</span></td>
             <td><span class="package-badge">${esc(v.package || '')}</span></td>
-            ${renderMarketCell(v.price_market, v.source, v.source_url)}
-            ${renderEcommerceCell(v.price_ecommerce)}
-            ${renderEstimatedCell(v.price_estimated)}
+            ${renderMarketCell(v.price_mall, v.mall_source, v.mall_url)}
+            ${renderEcommerceCell(v.price_ai)}
+            ${renderEstimatedCell(v.price_unit)}
             ${scoreBarCell(v.func_impact_score, prevV?.func_impact_score, '#0071e3')}
             ${scoreBarCell(v.exp_impact_score,  prevV?.exp_impact_score,  '#34c759')}
             <td></td>
@@ -1913,9 +1913,9 @@ svg-icon {
           <td><span class="part-number">${esc(item.part_number)}</span></td>
           <td><span class="description-text">${esc(item.description)}</span></td>
           <td><span class="package-badge">${esc(item.package || '')}</span></td>
-          ${renderMarketCell(item.price_market, '', '')}
-          ${renderEcommerceCell(item.price_ecommerce)}
-          ${renderEstimatedCell(item.price_estimated)}
+          ${renderMarketCell(item.price_mall, '', '')}
+          ${renderEcommerceCell(item.price_ai)}
+          ${renderEstimatedCell(item.price_unit)}
           ${impactLabelCell(item.func_impact_label, 'func')}
           ${impactLabelCell(item.exp_impact_label, 'exp')}
           <td>${renderUserValue(item.user_value)}</td>
@@ -1933,9 +1933,9 @@ svg-icon {
           <td><span class="part-number">${esc(item.part_number)}</span></td>
           <td><span class="description-text">${esc(item.description)}</span></td>
           <td><span class="package-badge">${esc(item.package || '')}</span></td>
-          ${renderMarketCell(item.price_market, item.source, item.source_url)}
-          ${renderEcommerceCell(item.price_ecommerce)}
-          ${renderEstimatedCell(item.price_estimated)}
+          ${renderMarketCell(item.price_mall, item.mall_source, item.mall_url)}
+          ${renderEcommerceCell(item.price_ai)}
+          ${renderEstimatedCell(item.price_unit)}
           ${impactLabelCell(item.func_impact_label, 'func')}
           ${impactLabelCell(item.exp_impact_label, 'exp')}
           <td>${renderUserValue(item.user_value)}</td>
@@ -2039,9 +2039,9 @@ svg-icon {
             v.version,
             v.part_number,
             v.description,
-            v.price_market != null ? v.price_market : '',
-            v.price_ecommerce != null ? v.price_ecommerce : '',
-            v.price_estimated != null ? v.price_estimated : '',
+            v.price_mall != null ? v.price_mall : '',
+            v.price_ai != null ? v.price_ai : '',
+            v.price_unit != null ? v.price_unit : '',
             item.func_impact,
             item.exp_impact,
             item.user_value,
@@ -2056,9 +2056,9 @@ svg-icon {
           '通用',
           item.part_number,
           item.description,
-          item.price_market != null ? item.price_market : '',
-          item.price_ecommerce != null ? item.price_ecommerce : '',
-          item.price_estimated != null ? item.price_estimated : '',
+          item.price_mall != null ? item.price_mall : '',
+          item.price_ai != null ? item.price_ai : '',
+          item.price_unit != null ? item.price_unit : '',
           item.func_impact,
           item.exp_impact,
           item.user_value,

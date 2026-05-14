@@ -9,7 +9,7 @@ BOM 询价结果汇总脚本
   python3 build_bom_json.py data/my-query.json
   python3 build_bom_json.py --test   # 用示例数据测试
 
-输入 JSON 格式：
+输入 JSON 格式（v9.0.0 新版）：
 {
   "project": "项目名称",
   "items": [
@@ -18,10 +18,11 @@ BOM 询价结果汇总脚本
       "variants": [
         {
           "version": "经济版",
-          "price_market": 8.5,          // 商城价（立创/华秋/云汉/LCSC 最低）
-          "market_source": "立创商城",    // 商城价来源（含商城名才有链接）
-          "market_url": "https://...",    // 商城确认链接（仅确认商城才有）
-          "price_ecommerce": 12,          // 电商价（买手全网最低含券）
+          "price_mall": 8.5,          // 商城价（立创/华秋取最低，查不到留空）
+          "mall_source": "立创商城",    // 商城来源（立创/华秋/云汉/LCSC）
+          "mall_url": "https://...",   // 商城链接（可点击）
+          "price_ai": 12,              // AI价（博查/IQS）
+          "ai_source": "博查",         // AI来源：博查/iqs/经验预估（无链接）
           "found": true
         }
       ]
@@ -30,9 +31,9 @@ BOM 询价结果汇总脚本
 }
 
 输出 JSON 自动计算：
-  - price_estimated = min(price_market, price_ecommerce) * 0.85（有搜索价）
-  - price_estimated = price_estimated_experience（无搜索价时，经验值）
-  - source / source_url = 仅当 market_source 含"立创/华秋/云汉/LCSC"才保留
+  - 小计价 = price_mall（优先）；price_mall 为空则用 price_ai
+  - mall_source / mall_url = 仅当商城来源是确认商城才有可点击链接
+  - ai_source = 文本描述，无链接
   - cost_ratio = 在所有 item 处理完后计算
 """
 
@@ -55,18 +56,20 @@ def is_confirmed_shop(source: str) -> bool:
     return any(kw in source for kw in CONFIRMED_SHOP_KEYWORDS)
 
 
-def calc_estimated(pm, pe, exp=None):
-    """计算预估价"""
-    candidates = [v for v in (pm, pe) if v is not None]
-    if candidates:
-        return round(min(candidates) * 0.85, 2)
-    return round(exp, 2) if exp is not None else None
+def calc_unit_price(mall_price, ai_price):
+    """计算小计价：优先商城价，没有才用AI价"""
+    if mall_price is not None:
+        return round(mall_price, 2)
+    elif ai_price is not None:
+        return round(ai_price, 2)
+    return None
 
 
 def process_item(in_item: dict) -> dict:
     """处理单个 item（shared 或 variant parent），返回输出格式"""
+    # 过滤掉不需要透传的字段
     out = {k: v for k, v in in_item.items()
-            if k not in ("market_source", "market_url", "ecommerce_source",
+            if k not in ("mall_source", "mall_url", "ai_source",
                          "price_estimated_experience", "variants")}
 
     if in_item.get("is_variant"):
@@ -74,53 +77,58 @@ def process_item(in_item: dict) -> dict:
         new_variants = []
         for v in in_item.get("variants", []):
             nv = {k: val for k, val in v.items()
-                   if k not in ("market_source", "market_url",
-                                "ecommerce_source", "price_estimated_experience")}
+                   if k not in ("mall_source", "mall_url", "ai_source",
+                                "price_estimated_experience")}
 
-            pm = v.get("price_market")
-            pe = v.get("price_ecommerce")
-            exp = v.get("price_estimated_experience")
-            nv["price_estimated"] = calc_estimated(pm, pe, exp)
+            mall = v.get("price_mall")
+            ai = v.get("price_ai")
+            nv["price_unit"] = calc_unit_price(mall, ai)
 
-            # source / source_url：仅确认商城才有
-            ms = v.get("market_source", "")
-            mu = v.get("market_url", "")
+            # mall_source / mall_url：仅确认商城才有可点击链接
+            ms = v.get("mall_source")
+            mu = v.get("mall_url")
             if is_confirmed_shop(ms) and mu:
-                nv["source"] = ms
-                nv["source_url"] = mu
+                nv["mall_source"] = ms
+                nv["mall_url"] = mu
             else:
-                nv["source"] = ""
-                nv["source_url"] = ""
+                nv["mall_source"] = None
+                nv["mall_url"] = None
 
-            nv.setdefault("found", pm is not None or pe is not None)
+            # ai_source：AI来源描述，无链接
+            nv["ai_source"] = v.get("ai_source")
+
+            nv.setdefault("found", mall is not None or ai is not None)
             new_variants.append(nv)
 
         out["variants"] = new_variants
     else:
         # shared item
-        pm = in_item.get("price_market")
-        pe = in_item.get("price_ecommerce")
-        exp = in_item.get("price_estimated_experience")
-        out["price_estimated"] = calc_estimated(pm, pe, exp)
+        mall = in_item.get("price_mall")
+        ai = in_item.get("price_ai")
+        out["price_unit"] = calc_unit_price(mall, ai)
 
-        ms = in_item.get("market_source", "")
-        mu = in_item.get("market_url", "")
+        # mall_source / mall_url：仅确认商城才有可点击链接
+        ms = in_item.get("mall_source")
+        mu = in_item.get("mall_url")
         if is_confirmed_shop(ms) and mu:
-            out["source"] = ms
-            out["source_url"] = mu
+            out["mall_source"] = ms
+            out["mall_url"] = mu
         else:
-            out["source"] = ""
-            out["source_url"] = ""
+            out["mall_source"] = None
+            out["mall_url"] = None
 
-        out.setdefault("found", pm is not None or pe is not None)
+        # ai_source：AI来源描述，无链接
+        out["ai_source"] = in_item.get("ai_source")
+
+        out.setdefault("found", mall is not None or ai is not None)
 
     return out
 
 
 def calc_cost_ratios(items: list) -> list:
-    """计算 cost_ratio（需要全部 price_estimated 都就绪）"""
+    """计算 cost_ratio（需要全部 price_unit 都就绪）"""
     total = sum(
-        (v.get("price_estimated") or 0)
+        (v.get("price_unit") or 0)
         for item in items
         for v in ([item] if not item.get("is_variant") else item.get("variants", []))
     )
@@ -134,12 +142,12 @@ def calc_cost_ratios(items: list) -> list:
             new_variants = []
             for v in item["variants"]:
                 nv = dict(v)
-                ratio = (nv.get("price_estimated") or 0) / total * 100
+                ratio = (nv.get("price_unit") or 0) / total * 100
                 nv["cost_ratio"] = round(ratio, 1)
                 new_variants.append(nv)
             out["variants"] = new_variants
         else:
-            ratio = (item.get("price_estimated") or 0) / total * 100
+            ratio = (item.get("price_unit") or 0) / total * 100
             out["cost_ratio"] = round(ratio, 1)
         results.append(out)
     return results
