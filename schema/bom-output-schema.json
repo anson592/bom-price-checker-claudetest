@@ -64,8 +64,9 @@
         "mall_url":       { "type": ["string", "null"], "format": "uri", "description": "商城链接（仅确认商城来源才有，可点击）" },
         "price_ai":       { "type": ["number", "null"], "description": "AI价（博查/IQS，查不到留空）" },
         "ai_source":      { "type": ["string", "null"], "description": "AI来源：博查 / iqs / 经验预估（无链接）" },
+        "price_unit":     { "type": ["number", "null"], "description": "小计（由 generate_report.py 自动计算，无需 LLM 填写）" },
         "found":          { "type": "boolean", "description": "是否有任一真实价格（商城价或AI价）" },
-        "cost_ratio":     { "type": "number", "description": "成本占比 %" },
+        "cost_ratio":     { "type": "number", "description": "成本占比 %（由 generate_report.py 自动计算，无需 LLM 填写）" },
         "cost_tier":      { "type": "string" },
         "func_impact":    { "type": "string" },
         "exp_impact":     { "type": "string" },
@@ -88,8 +89,9 @@
         "mall_url":         { "type": ["string", "null"] },
         "price_ai":         { "type": ["number", "null"] },
         "ai_source":         { "type": ["string", "null"] },
+        "price_unit":       { "type": ["number", "null"], "description": "小计（脚本自动计算）" },
         "found":            { "type": "boolean" },
-        "cost_ratio":       { "type": "number" },
+        "cost_ratio":       { "type": "number", "description": "成本占比 %（脚本自动计算）" },
         "func_impact_score":  { "type": "integer" },
         "exp_impact_score":   { "type": "integer" }
       }

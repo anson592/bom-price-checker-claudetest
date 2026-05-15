@@ -7,6 +7,12 @@ BOM 报告生成器 —— 将 JSON 数据注入模板，生成独立可分享�
   python3 generate_report.py data/智能台灯_20260512.json
 
 默认输出到同目录下: <项目名>_<日期>_report.html
+
+normalize_data 阶段做四件事：
+  1. 字段兼容层：旧字段名 (price_market/price_ecommerce/...) 自动迁移到新字段名
+  2. 自动计算 price_unit（小计 = price_mall 优先；mall 空则取 price_ai）
+  3. 自动计算 cost_ratio（每颗占单套总成本百分比，按 selected_version）
+  4. 轻量校验，违规打 stderr 警告但不阻塞
 """
 
 import json
@@ -15,12 +21,129 @@ import os
 import re
 from pathlib import Path
 
-# 模板路径（与脚本同目录或上级目录）
 SCRIPT_DIR = Path(__file__).parent.resolve()
 TEMPLATE_PATH = SCRIPT_DIR / "report-template.html"
-
-# 标记: 数据注入点
 INJECTION_MARKER = "// __BOM_DATA_INJECTION_POINT__"
+
+FIELD_ALIASES = {
+    "price_market": "price_mall",
+    "market_source": "mall_source",
+    "market_url": "mall_url",
+    "price_ecommerce": "price_ai",
+    "ecommerce_source": "ai_source",
+    "price_estimated": "price_unit",
+    "price_estimated_experience": "price_unit",
+    "source": "mall_source",
+    "source_url": "mall_url",
+}
+
+
+def _apply_aliases(node: dict) -> None:
+    for old, new in FIELD_ALIASES.items():
+        if old in node:
+            if new not in node or node.get(new) in (None, ""):
+                node[new] = node.pop(old)
+            else:
+                del node[old]
+
+
+def _compute_price_unit(node: dict) -> None:
+    mall = node.get("price_mall")
+    ai = node.get("price_ai")
+    existing = node.get("price_unit")
+
+    if mall is not None:
+        computed = mall
+    elif ai is not None:
+        computed = ai
+    else:
+        computed = existing
+
+    if (
+        existing is not None
+        and computed is not None
+        and isinstance(existing, (int, float))
+        and isinstance(computed, (int, float))
+        and abs(existing - computed) > 0.001
+    ):
+        print(
+            f"⚠️  price_unit 覆盖：原 {existing} → 重算 {computed} "
+            f"(part_number={node.get('part_number','?')})",
+            file=sys.stderr,
+        )
+    node["price_unit"] = computed
+
+
+def _validate_node(node: dict, ctx: str) -> None:
+    if (
+        node.get("found") is True
+        and node.get("price_mall") is None
+        and node.get("price_ai") is None
+    ):
+        print(
+            f"⚠️  {ctx}: found=true 但 price_mall 和 price_ai 都为 null",
+            file=sys.stderr,
+        )
+
+
+def normalize_data(data: dict) -> dict:
+    versions = data.get("versions") or []
+    selected = data.get("selected_version") or (versions[0] if versions else None)
+
+    for item in data.get("items") or []:
+        _apply_aliases(item)
+        if item.get("is_variant"):
+            for v in item.get("variants") or []:
+                _apply_aliases(v)
+                _compute_price_unit(v)
+                _validate_node(
+                    v, f"{item.get('category','?')}/{v.get('version','?')}"
+                )
+                if versions and v.get("version") not in versions:
+                    print(
+                        f"⚠️  version '{v.get('version')}' 不在 versions {versions} "
+                        f"(item id={item.get('id')})",
+                        file=sys.stderr,
+                    )
+            if not (item.get("variants") or []):
+                print(
+                    f"⚠️  item id={item.get('id')} is_variant=true 但 variants 为空",
+                    file=sys.stderr,
+                )
+        else:
+            _compute_price_unit(item)
+            _validate_node(
+                item, f"{item.get('category','?')}/{item.get('part_number','?')}"
+            )
+
+    total = 0.0
+    for item in data.get("items") or []:
+        if item.get("is_variant"):
+            v = next(
+                (
+                    x
+                    for x in (item.get("variants") or [])
+                    if x.get("version") == selected
+                ),
+                None,
+            )
+            if v and isinstance(v.get("price_unit"), (int, float)):
+                total += v["price_unit"]
+        else:
+            if isinstance(item.get("price_unit"), (int, float)):
+                total += item["price_unit"]
+
+    if total > 0:
+        for item in data.get("items") or []:
+            if item.get("is_variant"):
+                for v in item.get("variants") or []:
+                    if isinstance(v.get("price_unit"), (int, float)):
+                        v["cost_ratio"] = round(v["price_unit"] / total * 100, 1)
+            else:
+                if isinstance(item.get("price_unit"), (int, float)):
+                    item["cost_ratio"] = round(item["price_unit"] / total * 100, 1)
+
+    return data
 
 
 def load_template() -> str:
@@ -120,6 +243,7 @@ def main():
     # 加载
     template = load_template()
     data = load_data(json_path)
+    data = normalize_data(data)
 
     # 注入
     result = inject_data(template, data)

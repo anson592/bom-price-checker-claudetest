@@ -33,19 +33,19 @@
 
 ```bash
 # 克隆到 WorkBuddy skills 目录
-git clone https://github.com/anson592/bom-price-checker.git ~/.workbuddy/skills/bom-price-checker
+git clone https://github.com/anson592/bom-price-checker-claudetest.git ~/.workbuddy/skills/bom-price-checker-claudetest
 ```
 
 ### 方式二：手动下载
 
 1. 从 GitHub 下载 ZIP 并解压
-2. 将文件夹重命名为 `bom-price-checker`
+2. 将文件夹重命名为 `bom-price-checker-claudetest`
 3. 放入 `~/.workbuddy/skills/` 目录
 
 ## 项目结构
 
 ```
-bom-price-checker/
+bom-price-checker-claudetest/
 ├── SKILL.md                    # Skill 定义文件（核心）
 ├── README.md                   # 说明文档
 ├── README_WORKFLOW.md          # 工作流文档
@@ -68,7 +68,7 @@ bom-price-checker/
 
 - 「帮我做一个智能台灯，查一下 BOM 成本」
 - 「帮我查 BOM 价格」，然后上传 BOM 表
-- 「ESP32-S3-WROOM-1-N8R8 2000套多少钱」
+- 「STM32F103C8T6 2000套多少钱」
 
 ## License
 

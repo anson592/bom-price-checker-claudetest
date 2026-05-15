@@ -45,10 +45,10 @@ python3 generate_report.py data/xxx_final.json
       "variants": [
         {
           "version": "经济版",
-          "brand": "Espressif",
-          "package": "SMD-18",
-          "part_number": "ESP32-C3-MINI-1-N4",
-          "description": "...",
+          "brand": "<MCU_品牌>",
+          "package": "<封装>",
+          "part_number": "<具体型号-占位>",
+          "description": "<关键参数>",
           "price_mall": 8.5,              // 商城价：搜到什么填什么，两个商城取最低
           "mall_source": "立创商城",        // 来源：立创/华秋/云汉/LCSC/博查搜索/IQS搜索
           "mall_url": "https://...",        // 仅立创/华秋/云汉/LCSC有链接
