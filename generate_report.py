@@ -48,9 +48,19 @@ def _apply_aliases(node: dict) -> None:
 
 
 def _compute_price_unit(node: dict) -> None:
+    """计算 price_unit（小计）：mall 优先，mall 空则取 ai；PCB 特殊处理"""
     mall = node.get("price_mall")
     ai = node.get("price_ai")
     existing = node.get("price_unit")
+    category = node.get("category", "")
+
+    # PCB 特殊处理：如果 mall 和 ai 都为 null，用公式计算
+    if category == "PCB" and mall is None and ai is None:
+        computed = _compute_pcb_price(node)
+        if computed is not None:
+            node["price_unit"] = computed
+            node["ai_source"] = f"脚本公式（{node.get('description', 'PCB')}）"
+            return
 
     if mall is not None:
         computed = mall
@@ -72,6 +82,36 @@ def _compute_price_unit(node: dict) -> None:
             file=sys.stderr,
         )
     node["price_unit"] = computed
+
+
+def _compute_pcb_price(node: dict) -> float:
+    """PCB 价格经验公式（v9.3 新增）"""
+    desc = node.get("description", "")
+
+    # 从 description 提取层数、尺寸
+    layers_match = re.search(r'(\d+)层', desc)
+    size_match = re.search(r'(\d+)[×x](\d+)\s*mm', desc)
+
+    layers = int(layers_match.group(1)) if layers_match else 4
+    if size_match:
+        w, h = int(size_match.group(1)), int(size_match.group(2))
+        size_mm2 = w * h
+    else:
+        size_mm2 = 10000  # 默认 100×100mm
+
+    # 从全局数据获取产量（这里简化为默认 2000）
+    qty = 2000
+
+    # 公式
+    base_price_map = {2: 5, 4: 12, 6: 22, 8: 35}
+    base = base_price_map.get(layers, 12)
+    size_factor = max(1.0, size_mm2 / 10000)
+
+    qty_discount_map = {100: 1.5, 500: 1.2, 1000: 1.05, 2000: 1.0, 5000: 0.9, 10000: 0.85}
+    qty_key = min(qty_discount_map.keys(), key=lambda k: abs(k - qty))
+    qty_discount = qty_discount_map[qty_key]
+
+    return round(base * size_factor * qty_discount, 2)
 
 
 def _validate_node(node: dict, ctx: str) -> None:

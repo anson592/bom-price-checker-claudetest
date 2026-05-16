@@ -795,8 +795,7 @@ main {
 
 .table-scroll {
   overflow-x: auto;
-  overflow-y: auto;
-  max-height: 800px;
+  overflow: visible;
 }
 
 table {
@@ -806,18 +805,19 @@ table {
 }
 
 thead tr {
-  background: var(--color-surface-2);
-  border-bottom: 1px solid var(--color-border);
+  background: linear-gradient(180deg, #f5f7fb 0%, #ebeff5 100%);
+  border-bottom: 2px solid var(--color-border);
+  position: sticky;
+  top: 0;
+  z-index: 10;
 }
 
 th {
-  padding: 12px 14px;
+  padding: 14px 14px;
   text-align: left;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 600;
-  color: var(--color-text-tertiary);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  color: var(--color-text-primary);
   white-space: nowrap;
   user-select: none;
 }
@@ -826,7 +826,7 @@ th.num { text-align: right; }
 
 td {
   padding: 16px 14px;
-  vertical-align: middle;
+  vertical-align: top;
   border-bottom: 1px solid var(--color-border-light);
 }
 
@@ -1039,12 +1039,11 @@ td.impact-cell .text-clip {
 
 /* Note */
 .note-text {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--color-text-secondary);
-  white-space: nowrap;
-  max-width: 120px;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  word-break: break-word;
+  line-height: 1.5;
 }
 
 /* Brand & Package */
@@ -1517,26 +1516,22 @@ svg-icon {
 
   function computeVersionTotals() {
     return D.versions.map(ver => {
-      let market = 0, ecommerce = 0, estimated = 0, parts = 0, notFound = 0;
+      let estimated = 0, parts = 0, notFound = 0;
       D.items.forEach(item => {
         if (item.is_variant) {
           const v = item.variants.find(v => v.version === ver);
           if (v) {
             parts++;
-            market += (v.price_mall || 0);
-            ecommerce += (v.price_ai || 0);
             estimated += (v.price_unit || 0);
             if (!v.found) notFound++;
           }
         } else {
           parts++;
-          market += (item.price_mall || 0);
-          ecommerce += (item.price_ai || 0);
           estimated += (item.price_unit || 0);
           if (!item.found) notFound++;
         }
       });
-      return { ver, market, ecommerce, estimated, parts, notFound };
+      return { ver, estimated, parts, notFound };
     });
   }
 
@@ -1547,9 +1542,9 @@ svg-icon {
       let price = 0;
       if (item.is_variant) {
         const v = item.variants.find(v => v.version === version);
-        if (v) price = v.price_mall || 0;
+        if (v) price = v.price_unit || 0;
       } else {
-        price = item.price_mall || 0;
+        price = item.price_unit || 0;
       }
       cats[cat] = (cats[cat] || 0) + price;
     });
@@ -1644,13 +1639,9 @@ svg-icon {
           ${t.notFound > 0 ? `<span class="ver-tab-warn">⚠ ${t.notFound} 项经验估算</span>` : ''}
         </div>
         <div class="ver-tab-price-row">
-          <span class="ver-tab-main-price">${fmtPrice(t.market)}</span>
-          <span class="ver-tab-price-label">商城价</span>
+          <span class="ver-tab-main-price">${fmtPrice(t.estimated)}</span>
+          <span class="ver-tab-price-label">小计合计</span>
           ${delta != null ? `<span class="ver-tab-delta up">+¥${delta.toFixed(0)} +${deltaPct}%</span>` : ''}
-        </div>
-        <div class="ver-tab-sub-prices">
-          <span class="ver-tab-sub-price-item estimated">预估 <strong>${fmtPrice(t.estimated)}</strong></span>
-          <span class="ver-tab-sub-price-item">电商 <strong>${fmtPrice(t.ecommerce)}</strong></span>
         </div>
         ${(topsDelta || memDelta || memTypeDelta) ? `
         <div class="ver-tab-upgrades">
@@ -1717,7 +1708,7 @@ svg-icon {
           c.fillText(fmtPrice(chart._totalDisplay || total), cx, cy - 10);
           c.fillStyle = '#6e6e73';
           c.font = "400 11px 'IBM Plex Sans', sans-serif";
-          c.fillText('商城价合计', cx, cy + 14);
+          c.fillText('小计合计', cx, cy + 14);
           c.restore();
         }
       };
