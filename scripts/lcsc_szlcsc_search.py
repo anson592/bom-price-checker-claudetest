@@ -35,7 +35,8 @@ def _pick_price(prices: list) -> tuple[float | None, int | None]:
     return best.get("productPrice"), best.get("startPurchasedNumber")
 
 
-SEARCH_URL_TPL = "https://www.szlcsc.com/search?q={}"
+SEARCH_URL_TPL = "https://so.szlcsc.com/global.html?k={}"
+DETAIL_URL_TPL = "https://item.szlcsc.com/{}.html"
 HOMEPAGE = "https://www.szlcsc.com/"
 SEARCH_INPUT_ID = "#global-seach-input"  # 原页面 typo，少了一个 r
 
@@ -152,6 +153,12 @@ async def _search_async(keyword: str) -> dict:
                 result["brand"] = vo.get("productGradePlateName")
                 result["price"] = float(price_val) if price_val is not None else None
                 result["price_ladder"] = ladder  # 最低价对应的阶梯起购量
+
+                # v9.4: 用 productId 拼详情页 URL（实测：item.szlcsc.com/{productId}.html 200 OK）
+                # 拿不到 productId 时保留搜索页 URL 作为 fallback
+                product_id = vo.get("productId")
+                if product_id:
+                    result["url"] = DETAIL_URL_TPL.format(product_id)
 
         except Exception as e:
             result["error"] = str(e)

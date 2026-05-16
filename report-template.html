@@ -830,6 +830,11 @@ td {
   border-bottom: 1px solid var(--color-border-light);
 }
 
+/* v9.4.1 增补：rowspan 合并的短内容单元格垂直居中（# / 分类 / 用户价值） */
+td.rowspan-center {
+  vertical-align: middle;
+}
+
 tbody tr:last-child td { border-bottom: none; }
 
 /* Table Row Types */
@@ -991,7 +996,7 @@ td.impact-cell .text-clip {
   line-height: 1.6;
 }
 
-/* User Value Dots */
+/* User Value (v9.4: 文字标签替代圆点) */
 .user-value {
   display: flex;
   align-items: center;
@@ -1009,6 +1014,21 @@ td.impact-cell .text-clip {
   background: var(--color-accent);
   border-color: var(--color-accent);
 }
+
+.value-tag {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  text-align: center;
+  min-width: 32px;
+}
+.value-tag.value-低 { background: #f5f5f7; color: #86868b; }
+.value-tag.value-中 { background: #e8f0fe; color: #1a73e8; }
+.value-tag.value-高 { background: #e6f4ea; color: #137333; }
+.value-tag.value-na { background: #f5f5f7; color: #c7c7cc; }
 
 /* Cost Ratio */
 .cost-ratio-cell {
@@ -1065,7 +1085,17 @@ td.impact-cell .text-clip {
   white-space: nowrap;
 }
 
-/* Impact label (parent + shared rows) */
+/* Impact text (v9.4.1: 与"规格"列同样式的纯文字) */
+.impact-text {
+  font-size: 13px;
+  color: var(--color-text-primary);
+  line-height: 1.5;
+  white-space: normal;
+  word-break: break-word;
+  vertical-align: top;
+}
+
+/* Impact label (v9.4 之前的彩色标签，已废弃，仅保留以防其他地方引用) */
 .impact-label-cell {
   vertical-align: middle;
 }
@@ -1402,19 +1432,19 @@ svg-icon {
             <thead>
               <tr>
                 <th style="width:36px">#</th>
-                <th style="width:64px">分类</th>
+                <th style="width:72px">分类</th>
                 <th style="width:72px">品牌</th>
-                <th style="width:130px">型号</th>
-                <th style="width:190px">规格</th>
-                <th style="width:76px">封装</th>
-                <th class="num" style="width:78px">商城价</th>
-                <th class="num" style="width:78px">AI价</th>
-                <th class="num" style="width:78px">小计</th>
-                <th style="width:200px">功能影响</th>
-                <th style="width:200px">体验影响</th>
-                <th style="width:70px">用户价值</th>
-                <th style="width:68px">成本占比</th>
-                <th style="width:96px">备注</th>
+                <th style="width:140px">型号</th>
+                <th style="width:160px">规格</th>
+                <th style="width:68px">封装</th>
+                <th class="num" style="width:72px">商城价</th>
+                <th class="num" style="width:72px">AI价</th>
+                <th class="num" style="width:72px">小计</th>
+                <th style="width:140px">功能影响</th>
+                <th style="width:140px">体验影响</th>
+                <th style="width:56px">用户价值</th>
+                <th style="width:56px">占比</th>
+                <th>备注</th>
               </tr>
             </thead>
             <tbody id="bom-tbody"></tbody>
@@ -1620,8 +1650,8 @@ svg-icon {
 
     container.innerHTML = totals.map((t, i) => {
       const prev     = i > 0 ? totals[i - 1] : null;
-      const delta    = prev ? t.market - prev.market : null;
-      const deltaPct = prev ? ((delta / prev.market) * 100).toFixed(0) : null;
+      const delta    = (prev && t.estimated != null && prev.estimated != null) ? t.estimated - prev.estimated : null;
+      const deltaPct = (delta != null && prev && prev.estimated > 0) ? ((delta / prev.estimated) * 100).toFixed(0) : null;
       const s    = specs[i];
       const prevS = i > 0 ? specs[i - 1] : null;
 
@@ -1641,7 +1671,7 @@ svg-icon {
         <div class="ver-tab-price-row">
           <span class="ver-tab-main-price">${fmtPrice(t.estimated)}</span>
           <span class="ver-tab-price-label">小计合计</span>
-          ${delta != null ? `<span class="ver-tab-delta up">+¥${delta.toFixed(0)} +${deltaPct}%</span>` : ''}
+          ${(delta != null && !isNaN(delta) && deltaPct != null) ? `<span class="ver-tab-delta ${delta >= 0 ? 'up' : 'down'}">${delta >= 0 ? '+' : ''}¥${delta.toFixed(0)} ${delta >= 0 ? '+' : ''}${deltaPct}%</span>` : ''}
         </div>
         ${(topsDelta || memDelta || memTypeDelta) ? `
         <div class="ver-tab-upgrades">
@@ -1780,12 +1810,11 @@ svg-icon {
   }
 
   // ─── Render BOM Table ────────────────────────────────────
-  function renderUserValue(score) {
-    let dots = '';
-    for (let i = 1; i <= 5; i++) {
-      dots += `<span class="value-dot ${i <= score ? 'filled' : ''}"></span>`;
-    }
-    return `<div class="user-value">${dots}</div>`;
+  function renderUserValue(val) {
+    // v9.4: 改为文字标签（"低"/"中"/"高"），废弃 1-5 数字圆点
+    if (val == null || val === '') return `<span class="value-tag value-na">-</span>`;
+    const cls = (val === '高' || val === '中' || val === '低') ? `value-${val}` : 'value-na';
+    return `<span class="value-tag ${cls}">${esc(String(val))}</span>`;
   }
 
   function costRatioClass(ratio, threshold) {
@@ -1832,54 +1861,23 @@ svg-icon {
       return `<td class="impact-label-cell"><span class="impact-label ${colorCls}">${esc(label)}</span></td>`;
     }
 
-    function scoreBarCell(score, prevScore, color) {
-      if (score == null) return `<td></td>`;
-      const delta = prevScore != null ? score - prevScore : null;
-      const deltaHtml = (delta != null && delta !== 0)
-        ? `<span class="score-delta ${delta > 0 ? 'up' : 'down'}">${delta > 0 ? '↑' : '↓'}${Math.abs(delta)}</span>`
-        : '';
-      return `<td class="impact-score-cell">
-        <div class="score-bar-wrap">
-          <div class="score-bar-track"><div class="score-bar-fill" style="width:${score}%;background:${color}"></div></div>
-          <span class="score-num">${score}</span>${deltaHtml}
-        </div>
-      </td>`;
-    }
+    // v9.4: scoreBarCell 已废弃（impact 改用文字标签）
 
     D.items.forEach(item => {
       rowNum++;
 
       if (item.is_variant) {
-        const firstBrand = item.variants[0]?.brand || '';
+        // v9.4.1: 取消 parent 行；共享字段（# / 分类 / 功能影响 / 体验影响 / 用户价值 / 备注）
+        // 用 rowspan 合并到第一个 child 行。
+        const span = item.variants.length;
 
-        // ── Variant parent row ──
-        html += `<tr class="row-variant-parent">
-          <td><span class="dim">${rowNum}</span></td>
-          <td><span class="category-badge">${esc(item.category)}</span></td>
-          <td><span class="brand-text">${esc(firstBrand)}</span></td>
-          <td colspan="3">
-            <div class="variant-parent-label">
-              <span class="variant-tag">版本差异</span>
-              <span style="font-size:12px;color:var(--color-text-secondary);">${item.variants.length} 个方案</span>
-            </div>
-          </td>
-          <td colspan="3"></td>
-          ${impactLabelCell(item.func_impact_label, 'func')}
-          ${impactLabelCell(item.exp_impact_label, 'exp')}
-          <td>${renderUserValue(item.user_value)}</td>
-          <td class="cost-ratio-cell ${costRatioClass(getVariantRatio(item, version), threshold)} num" data-variant-ratio="${item.id}">
-            ${renderRatioForVersion(item, version, threshold)}
-          </td>
-          <td></td><td></td><td></td>
-        </tr>`;
-
-        // ── Variant child rows ──
         item.variants.forEach((v, vi) => {
+          const isFirst = vi === 0;
+          const rs = isFirst ? `rowspan="${span}"` : '';
           const ratioCls = costRatioClass(v.cost_ratio, threshold);
-          const prevV = vi > 0 ? item.variants[vi - 1] : null;
           html += `<tr class="row-variant-child">
-            <td><div class="variant-left-bar"><div class="variant-bar-line"></div></div></td>
-            <td></td>
+            ${isFirst ? `<td ${rs} class="rowspan-center"><span class="dim">${rowNum}</span></td>` : ''}
+            ${isFirst ? `<td ${rs} class="rowspan-center"><span class="category-badge">${esc(item.category)}</span></td>` : ''}
             <td><span class="brand-text">${esc(v.brand || '')}</span></td>
             <td><span class="version-label-badge v${vi}">${esc(v.version)}</span>&nbsp;<span class="part-number">${esc(v.part_number)}</span></td>
             <td><span class="description-text">${esc(v.description)}</span></td>
@@ -1887,11 +1885,11 @@ svg-icon {
             ${renderMarketCell(v.price_mall, v.mall_source, v.mall_url)}
             ${renderEcommerceCell(v.price_ai)}
             ${renderEstimatedCell(v.price_unit)}
-            ${scoreBarCell(v.func_impact_score, prevV?.func_impact_score, '#0071e3')}
-            ${scoreBarCell(v.exp_impact_score,  prevV?.exp_impact_score,  '#34c759')}
-            <td></td>
+            ${isFirst ? `<td ${rs} class="impact-text">${esc(item.func_impact || '')}</td>` : ''}
+            ${isFirst ? `<td ${rs} class="impact-text">${esc(item.exp_impact || '')}</td>` : ''}
+            ${isFirst ? `<td ${rs} class="rowspan-center">${renderUserValue(item.user_value)}</td>` : ''}
             <td class="cost-ratio-cell ${ratioCls} num">${v.cost_ratio != null ? v.cost_ratio.toFixed(1)+'%' : '—'}</td>
-            <td></td>
+            ${isFirst ? `<td ${rs}>${item.note ? `<span class="note-text">${esc(item.note)}</span>` : ''}</td>` : ''}
           </tr>`;
         });
 
@@ -1907,11 +1905,11 @@ svg-icon {
           ${renderMarketCell(item.price_mall, '', '')}
           ${renderEcommerceCell(item.price_ai)}
           ${renderEstimatedCell(item.price_unit)}
-          ${impactLabelCell(item.func_impact_label, 'func')}
-          ${impactLabelCell(item.exp_impact_label, 'exp')}
+          <td class="impact-text">${esc(item.func_impact || '')}</td>
+          <td class="impact-text">${esc(item.exp_impact || '')}</td>
           <td>${renderUserValue(item.user_value)}</td>
           <td class="cost-ratio-cell na num">—</td>
-          <td>${item.note ? `<span class="note-text" title="${esc(item.note)}">${esc(item.note)}</span>` : ''}</td>
+          <td>${item.note ? `<span class="note-text">${esc(item.note)}</span>` : ''}</td>
         </tr>`;
 
       } else {
@@ -1927,11 +1925,11 @@ svg-icon {
           ${renderMarketCell(item.price_mall, item.mall_source, item.mall_url)}
           ${renderEcommerceCell(item.price_ai)}
           ${renderEstimatedCell(item.price_unit)}
-          ${impactLabelCell(item.func_impact_label, 'func')}
-          ${impactLabelCell(item.exp_impact_label, 'exp')}
+          <td class="impact-text">${esc(item.func_impact || '')}</td>
+          <td class="impact-text">${esc(item.exp_impact || '')}</td>
           <td>${renderUserValue(item.user_value)}</td>
           <td class="cost-ratio-cell ${ratioCls} num">${item.cost_ratio != null ? item.cost_ratio.toFixed(1)+'%' : '—'}</td>
-          <td>${item.note ? `<span class="note-text" title="${esc(item.note)}">${esc(item.note)}</span>` : ''}</td>
+          <td>${item.note ? `<span class="note-text">${esc(item.note)}</span>` : ''}</td>
         </tr>`;
       }
     });
@@ -1960,10 +1958,9 @@ svg-icon {
         <div class="total-label">合计（${esc(t.ver)}，含税参考）</div>
         ${notFoundCount > 0 ? `<div class="total-note" style="color:#ff9f0a">⚠ ${notFoundCount} 项为经验估算价</div>` : '<div class="total-note" style="color:#1a7a30">✓ 已包含全部器件</div>'}
       </td>
-      <td class="total-price market num">¥${t.market.toFixed(1)}</td>
-      <td class="total-price ecommerce num">¥${t.ecommerce.toFixed(1)}</td>
-      <td class="total-price estimated num">¥${t.estimated.toFixed(1)}</td>
-      <td colspan="7"></td>
+      <td colspan="2"></td>
+      <td class="total-price estimated num">¥${(t.estimated || 0).toFixed(1)}</td>
+      <td colspan="5"></td>
     </tr>`;
   }
 

@@ -1,7 +1,7 @@
 ---
 name: bom-price-checker
 description: 从产品需求反推BOM清单（支持经济版/标准版/高性能版多版本对比选择，show_widget可视化表格展示），或直接读取BOM表，按元器件类别分级查询价格（立创/华秋直搜最高优先/双源交叉验证+Playwright实时点验/IQS全网比价），生成带来源链接的比价单。支持博查AI搜索+IQS并行交叉验证，HTML表格预览，默认2000套批量价比价。
-version: 9.2.0
+version: 9.4.0
 date: 2026-05-15
 trigger:
   - "帮我查BOM价格"
@@ -679,6 +679,20 @@ eMMC（Flash 系统盘）和 LPDDR / DDR（运行内存）**必须分两行**写
 
 **POP 封装特例**：如果 SoC 用 POP 封装（Flash + 内存与 SoC 共封装），仍按两行写，note 字段标注"POP 封装与 SoC 共贴"，价格可填套件价但分别记账。
 
+##### 不需要外挂时的占位写法（v9.4 新增硬约束）
+
+存储-Flash 和存储-内存**两行都必须出现在 BOM**，即便不需要外挂——这是统一规则。
+不需要外挂时，按以下格式写占位行（不要省略整行）：
+
+| 场景 | part_number | brand | price_unit | note |
+|---|---|---|---|---|
+| MCU 内置 Flash 够用（如 STM32F405） | `MCU 内置` | `-` | `0` | "STM32F405 内置 1MB Flash，无需外挂" |
+| MCU 内置 SRAM 够用 | `MCU 内置` | `-` | `0` | "STM32F405 内置 192KB SRAM，无需外挂" |
+| SoC POP 封装（Flash+内存与 SoC 共贴） | 实际型号 | 实际厂家 | 套件价分摊 | "POP 封装与 SoC 共贴" |
+
+**理由**：建立统一规则，所有产品 BOM 都有 Flash + 内存两行，避免用户误以为遗漏。
+**反例（v9.3 暴露的 bug）**：拍立得选 STM32F405（内置 SRAM），模型直接省略"存储-内存"行——v9.4 起这种省略**不允许**。
+
 ##### 电池选型规则（核心元件，必须有品牌）
 
 候选品牌（≥ 2 家）：
@@ -733,6 +747,12 @@ eMMC（Flash 系统盘）和 LPDDR / DDR（运行内存）**必须分两行**写
 > **使用约束**：本表是分类词典，不是 BOM 必含清单。模型选用分类时**必须**对照 Layer 0 约束 + B.1.4 用户多选结果——产品不需要的分类**严禁**出现在 BOM 行里（与 v9.1 防 ESP32 幻觉同源约束）。
 
 **每个分类的取舍由 Layer 0 约束矩阵 + B.1.4 用户多选结果决定。用户没选/产品不需要的分类严禁强行填入 BOM。强制必选的只有 MCU、电源、晶振、阻容感、PCB、连接器（任何带电产品都需要）这 6 类。其他全部按需。**
+
+> **占位行规则（v9.4 新增）**：B.1.4 用户**勾选了**但产品实际不需要的分类（如选了"显示屏"但最终方案用 LED 灯条代替），仍需在 BOM 留一行占位：part_number=`-`，brand=`-`，price_unit=`0`，note 说明原因（如"方案改用 LED 灯条替代显示屏"）。
+>
+> **重要边界**：占位行规则**只适用于"用户勾选了但实际不需要"**，**不适用于"用户根本没勾选"**——后者按 v9.3 防幻觉约束严禁出现在 BOM。
+>
+> **存储-Flash / 存储-内存**两类是例外：**强制两行都出现**，不需要外挂时按"MCU 内置"占位写法（详见上文存储分行硬约束章节）。
 
 | 分类标签 | 包含 | 取舍依据 |
 |---|---|---|
@@ -956,7 +976,7 @@ with open('BOM_反推.csv', 'w', newline='', encoding='utf-8-sig') as f:
 
 **价格填写规则**：
 - 商城价（`price_mall`）：Step 0 商城查到则填，没查到留 null
-- AI 价（`price_ai`）：**必须填**——Step 3 强制查询博查 + IQS，所有元器件都跑（不论商城价是否查到），都没结果才用经验估算并标 `ai_source="经验预估"`
+- AI 价（`price_ai`）：**必须填**——Step 1 强制查询博查 + IQS，所有元器件都跑（不论商城价是否查到），都没结果才用经验估算并标 `ai_source="经验预估"`。**不允许 `price_ai = null`**（v9.4 强制约束）
 - 小计（`price_unit`）：generate_report.py 自动算（mall 优先，mall 空用 ai）
 
 **常见错误：** LLM 跳过查询步骤，直接写估算价格。这会导致报告中的价格全部错误。
@@ -967,39 +987,35 @@ with open('BOM_反推.csv', 'w', newline='', encoding='utf-8-sig') as f:
 
 > **v8.4.0 策略精简**：不再区分高/低价值元器件，所有元器件统一走同一套查询流程。移除了逐商城爬取（立创单搜/LCSC/华秋/云汉）和反爬策略，大幅提升查询效率。
 
-#### 查询流程总览
+#### 查询流程总览（v9.4 重写：消除 Step 1/3 歧义）
 
 ```
-所有元器件（统一流程）：
+所有元器件（统一流程，每个元件都跑完三步）：
 
-  Step 0: 华秋商城 + 立创商城并行查询（★最高优先，无需登录）
-    ├─ 并行查询（2-3秒完成双源）
-    │   ├─ 华秋商城（快速，2-3秒）
-    │   └─ 立创商城（权威，3-5秒）
-    ├─ 双源都成功 → 交叉验证（价格差异 < 20% 则采纳较低价）
-    ├─ 单源成功 → 采纳该源价格
-    └─ 双源都失败 → 降级到 Step 1
+  Step 0: 华秋 + 立创商城并行（★商城价，无需登录）
+    ├─ 并行查询（2-3秒）
+    ├─ 双源都成功 → price_mall = min(两价)；mall_source = 双源验证
+    ├─ 单源成功 → price_mall = 该源价格
+    └─ 双源都失败 → price_mall = null（继续 Step 1，不阻塞）
 
-  Step 1: 博查 + IQS 并行查询（~11s）
-    ├─ 都有结果 → 交叉对比（一致/独有/存疑）
-    ├─ 只有一个有 → 记录
-    └─ 都没有 → 跳到 Step 3
+  Step 1: 博查 + IQS 并行（★AI 价，强制执行 ⚠️）
+    ⚠️ **不论 Step 0 结果如何，每个元件都必须执行 Step 1**——这是 v9.4 核心修复
+    ⚠️ 不允许"商城价拿到了就跳过 Step 1"
+    ├─ 博查 + IQS 并行查询（~11s）
+    ├─ 都有结果 → price_ai = min(两价)；ai_source = "博查+IQS（双源验证）"
+    ├─ 只有一个有 → price_ai = 该价；ai_source = "博查" 或 "iqs"
+    └─ 都没有 → price_ai = 经验估算值；ai_source = "经验预估（博查+IQS 无结果）"
+                                                 ↑ 必须填经验值，不允许 null
 
-  Step 2: 可选 Playwright 实时点验（仅一次尝试）
-    ├─ Step 1 AI 搜索有价格结果时触发
-    │   ├─ Playwright 访问立创商城 → 拦截搜索 API → 实时价格 + 阶梯价
-    │   ├─ 差价 < 15% → verified（已验证 ✅，以 AI 价格为准）
-    │   ├─ 差价 ≥ 15% → suspicious（存疑 ⚠️，以实时价覆盖 AI 价格）
-    │   └─ Playwright 失败 → unverified（未验证 ❓，保留 AI 价格）
-    └─ Step 1 无结果 → 跳过，直接进 Step 3
+  Step 2: 可选 Playwright 实时点验（兜底校准，可跳过）
+    ├─ 当 Step 0 失败 + Step 1 有 AI 价时触发
+    │   ├─ Playwright 访问立创商城 → 拦截 API → 实时价格 + 阶梯价
+    │   ├─ 差价 < 15% → verified ✅（AI 价采纳）
+    │   ├─ 差价 ≥ 15% → suspicious ⚠️（实时价覆盖 AI 价）
+    │   └─ 失败 → unverified ❓（保留 AI 价）
+    └─ Step 0 已成功 / Step 1 无结果 → 跳过 Step 2
 
-  Step 3: AI价查询（强制执行，所有元器件都查）
-    ├─ 不论 Step 0/1/2 结果如何，都要查 AI 价
-    ├─ 博查 + IQS 并行查询
-    ├─ AI价查到 → price_ai = 最低AI价，ai_source = "博查"/"iqs"
-    └─ AI价查不到 → price_ai = null，标注 ai_source = "经验预估"（让大模型估算）
-
-  失败汇总规则（v9.3 新增）：
+  失败汇总规则（v9.3 新增，v9.4 保留）：
     ├─ 维护失败计数器：iqs_fail_count / bocha_fail_count / lcsc_fail_count / hqchip_fail_count
     ├─ 触发条件（满足任一）：
     │   ├─ 同一来源连续失败 ≥ 3 次（怀疑限流 / 反爬 / 网络中断）
@@ -1012,6 +1028,20 @@ with open('BOM_反推.csv', 'w', newline='', encoding='utf-8-sig') as f:
     - IQS 因网络波动连续失败 → 触发汇总
     - 立创单个元件超时 → 静默降级，不打扰
 ```
+
+#### v9.4 输出 JSON 前自检（强制）
+
+生成最终 JSON 前必须扫描一遍 BOM：
+
+```python
+for item in bom_items:
+    if item.get("price_ai") is None:
+        # 不允许出现——回到 Step 1 重查 / 或填经验估算
+        raise AssertionError(f"price_ai is null for {item['part_number']}, must run Step 1 or fill estimate")
+```
+
+**price_ai 不能为 null 的理由**：HTML 报告依赖 `price_ai` 显示电商对比价，null 会渲染成空白让用户以为漏查了。即便博查+IQS 都没结果，也要让大模型按 Layer 4 经验值表填一个估算值，标 `ai_source = "经验预估"`。
+
 
 #### Step 0: 华秋商城 + 立创商城并行查询（★最高优先，无需登录）
 
@@ -1076,41 +1106,45 @@ with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
 
 **决策逻辑**：
 
+⚠️ **v9.4 核心修复**：Step 0 拿到商城价后，Step 1（博查+IQS）仍然必须执行——这是 v9.3→v9.4 的核心修复，不允许跳过。原 v9.3 的"跳过 Step 1、Step 2"理解是错的，**只能跳过 Step 2（Playwright 点验）**。
+
 ```
 并行查询华秋 + 立创（2-3秒）
   ├─ 双源都成功
   │   ├─ 价格差异 < 20%
   │   │   → price_mall = min(华秋价格, 立创价格)
   │   │   → mall_source = "华秋商城+立创商城（双源验证）"
-  │   │   → 跳过 Step 1、Step 2
+  │   │   → 跳过 Step 2（Playwright）；Step 1（博查+IQS）仍然执行 ⚠️
   │   └─ 价格差异 >= 20%
   │       → price_mall = 华秋价格
   │       → mall_source = "华秋商城"
   │       → 备注：立创价格差异 X 元（Y%）
-  │       → 跳过 Step 1、Step 2
+  │       → 跳过 Step 2；Step 1 仍然执行 ⚠️
   ├─ 仅华秋成功
   │   → price_mall = 华秋价格
   │   → mall_source = "华秋商城"
-  │   → 跳过 Step 1、Step 2
+  │   → 跳过 Step 2；Step 1 仍然执行 ⚠️
   ├─ 仅立创成功
   │   → price_mall = 立创价格
   │   → mall_source = "立创商城"
-  │   → 跳过 Step 1、Step 2
+  │   → 跳过 Step 2；Step 1 仍然执行 ⚠️
   └─ 双源都失败
-      → 降级到 Step 1（博查+IQS）
+      → price_mall = null
+      → 继续 Step 1（强制）+ Step 2（兜底）
 ```
 
 **注意事项**：
 - 并行查询耗时 = max(华秋耗时, 立创耗时) ≈ 2-3秒
 - 华秋商城：裸 requests，2-3秒，无反爬
 - 立创商城：Playwright，3-5秒，连续4次会触发登录（脚本已处理）
-- Step 0 成功的元器件**强制要查 Step 3（博查 + IQS 并行）**——AI 价是必填字段，不允许跳过；详见下文 Step 3
-- Step 0 成功的元器件跳过 Step 1 和 Step 2（但 Step 3 仍要执行）
+- ⚠️ **每个元件都必须经过 Step 1（博查+IQS）填 price_ai**，不论 Step 0 是否拿到商城价
+- 只有 Step 2（Playwright 点验）允许在 Step 0 成功时跳过
 
 ---
-#### Step 1: 博查 + IQS 并行查询
+#### Step 1: 博查 + IQS 并行查询（v9.4：强制执行，不再是降级路径）
 
-> Step 0 失败或跳过后，对所有尚未获取商城确认价的元器件执行双源并行查询。
+> ⚠️ **v9.4 关键修复**：Step 1 是**所有元件都必须执行**的 AI 价查询，**不是** Step 0 失败时的"降级补救"。
+> 不论 Step 0 商城价是否查到，每个元件都要走 Step 1。
 
 **调用方式**：
 
@@ -1127,13 +1161,13 @@ python3 scripts/iqs_search.py '{型号} 价格 批量' --cross-verify --json
 
 **交叉验证结果处理**：
 
-| 场景 | 处理方式 | mall_source 填写 |
+| 场景 | 处理方式 | ai_source 填写 |
 |------|----------|-------------------|
-| 两源一致（价差 < 20%） | 取较低值或平均值 | "博查+IQS" |
-| IQS 独有 | 记录 IQS 价格 | "IQS搜索" |
-| 博查独有 | 记录博查价格 | "博查搜索" |
-| 存疑（价差 ≥ 20%） | 取较低值，标注存疑 | "博查+IQS"（备注中标明双方价格） |
-| 两源均无 | 跳到 Step 3 | 空 |
+| 两源一致（价差 < 20%） | 取较低值或平均值 | "博查+IQS（双源验证）" |
+| IQS 独有 | 记录 IQS 价格 | "IQS" |
+| 博查独有 | 记录博查价格 | "博查" |
+| 存疑（价差 ≥ 20%） | 取较低值，标注存疑 | "博查+IQS（存疑）" |
+| 两源均无 | **必须填经验估算值**，price_ai 不允许 null | "经验预估（博查+IQS 无结果）" |
 
 **博查返回格式**（JSON）：
 - `parsed_prices`：价格数组（source / price / quantity / currency / link / note）
@@ -1146,14 +1180,13 @@ python3 scripts/iqs_search.py '{型号} 价格 批量' --cross-verify --json
 **费用**：博查 0.036¥/次，IQS 按内置 Key 额度消耗。
 
 ---
-#### Step 2: 可选 Playwright 实时点验（仅一次尝试）
+#### Step 2: 可选 Playwright 实时点验（兜底校准）
 
-> 仅当 Step 1（博查/IQS）有 AI 搜索价格结果时触发，用 Playwright headless 访问立创商城做实时价格比对。
-> **不逐个爬商城**，不重试，失败不阻塞。
+> v9.4 简化触发条件：仅当 Step 0 失败（无商城价）时触发——Step 0 已拿到商城价的元件不再做 Playwright 校准（商城价已是权威）。
 
-**触发条件**：Step 0 失败（降级到 Step 1），且 Step 1 博查或 IQS 至少有一个返回了价格。
+**触发条件**：Step 0 双源失败 + Step 1 至少有一个 AI 价。
 
-**验证目标**：立创商城（szlcsc.com），与 Step 0 共用同一套 Playwright 访问模式。
+**验证目标**：立创商城（szlcsc.com），用 Playwright headless 实时价格 vs Step 1 AI 价。
 
 **调用方式**：
 
@@ -1209,42 +1242,20 @@ python3 scripts/lcsc_playwright_verify.py '{型号}' --ai-price {Step1价格} --
 | `unverified` | 保持原值 | 保持原值 |
 
 ---
-#### Step 3: AI价查询（**强制执行，无论商城价是否查到**）
+#### ~~Step 3~~（v9.4 已并入 Step 1）
 
-> 不论 Step 0 商城价是否查到，**所有元器件都必须执行 AI 价查询（博查 + IQS 并行）**。AI 价提供电商对比维度，缺失会让用户失去成本谈判依据。
+> v9.4 把 v9.3 的 Step 1（商城价补救）和 Step 3（AI 价强制查询）**合并为统一的 Step 1**——所有元件都必须执行博查+IQS 查询。
+> 见上文 [Step 1: 博查 + IQS 并行查询（v9.4：强制执行，不再是降级路径）](#step-1-博查--iqs-并行查询v94强制执行不再是降级路径)。
 >
-> 仅当博查 + IQS 并行查询都没有结果时，才允许用经验估算填 `price_ai` 并标 `ai_source="经验预估"`。
-
-**调用方式**：
-
-```bash
-# 博查 AI 查询
-python3 scripts/shengsuan_search.py '{型号} 价格' --json
-
-# IQS 查询
-python3 scripts/iqs_search.py '{型号}' --json
-```
-
-**参数说明**：
-- `--source=0`：搜索全部平台（淘宝、京东、拼多多、1688 等）
-- `--keyword='{型号}'`：要搜索的型号或关键词
-- `--json`：JSON 格式输出（可选）
-
-**返回格式**：CSV/JSON，核心字段：
-- `actualPrice`：实际价格（含优惠券）
-- `source`/`sourceType`：来源平台
-- `title`：商品标题
-- `shopName`：店铺名称
-
-**处理逻辑**：
-1. 运行命令，获取结果
-2. 提取所有平台的最低 `actualPrice` → `price_ai`
-3. 无结果或报错 → `price_ai = null`（HTML 显示 "-"）
+> **关键约束（保留）**：
+> - 不论 Step 0 商城价是否查到，**所有元器件都必须执行 AI 价查询**
+> - 博查 + IQS 都无结果时**必须**用经验估算填 `price_ai`，标 `ai_source="经验预估"`
+> - **不允许 `price_ai = null`**——见上文「输出 JSON 前自检」
 
 ---
 #### 经验估算（所有来源均失败时的兜底）
 
-当 Step 0~3 全部没有查到任何价格时，使用经验估算：
+当 Step 0 和 Step 1 全部没有查到任何价格时，使用经验估算：
 
 | 分类 | 经验价格范围 |
 |------|-------------|
@@ -1259,7 +1270,7 @@ python3 scripts/iqs_search.py '{型号}' --json
 | 传感器（如MPU-6050） | ¥2 ~ 15/颗 |
 | 通信模块（WiFi/BLE 模组） | ¥8 ~ 35/颗 |
 
-必须标注：`found = false`，`price_estimated_experience` 填入经验值。
+写入规则：`price_ai = 经验值`，`ai_source = "经验预估"`，`found = false`（如果商城价也没查到）。
 
 ---
 #### 价格结果标注规则
@@ -1495,11 +1506,11 @@ bom_final = {
             "id": 1,
             "category": "MCU",
             "is_variant": True,
-            "func_impact": "主控性能影响...",
-            "exp_impact": "高性能MCU带来...",
-            "func_impact_label": "关键",
-            "exp_impact_label": "重要",
-            "user_value": 5,
+            # v9.4：func_impact / exp_impact 改为简短文字标签（≤ 10 字），废弃 _label / _score 后缀
+            "func_impact": "主控性能",      # ≤ 10 字短语，如 "主控性能" / "功能扩展" / "性能增强" / "成本优化"
+            "exp_impact": "操作流畅",       # ≤ 10 字短语，如 "操作流畅" / "续航增加" / "画质提升"
+            # v9.4：user_value 改为枚举 "低" / "中" / "高"（废弃 1-5 数字）
+            "user_value": "高",
             "cost_tier": "high",
             "note": "选型说明",
             "variants": [
@@ -1512,13 +1523,11 @@ bom_final = {
                     # ↓↓↓ 价格字段：直接抄查询结果，不计算 ↓↓↓
                     "price_mall": 8.5,                    # 商城价：搜到什么填什么，两个商城取最低
                     "mall_source": "立创商城",            # 来源：立创/华秋/云汉/LCSC/博查搜索/IQS搜索
-                    "mall_url": "https://www.szlcsc.com/product/xxx",  # 仅立创/华秋/云汉/LCSC有链接
-                    "price_ai": 12,                      # AI价：博查/IQS查到什么填什么
+                    "mall_url": "https://item.szlcsc.com/16424.html",  # v9.4：立创要用详情页 URL（item.szlcsc.com/{productId}.html）
+                    "price_ai": 12,                      # AI价：博查/IQS查到什么填什么；都没有时填经验估算（v9.4 不允许 null）
                     "ai_source": "博查",                  # 来源：博查/iqs/经验预估
                     # price_unit 和 cost_ratio 由 generate_report.py 自动计算，无需 LLM 填写
                     "found": True,
-                    "func_impact_score": 50,
-                    "exp_impact_score": 50
                 }
             ]
         },
@@ -1535,16 +1544,15 @@ bom_final = {
             "price_mall": None,               # 商城价：搜到什么填什么，查不到填 null
             "mall_source": "",                 # 来源
             "mall_url": "",                   # 链接（仅立创/华秋/云汉/LCSC有）
-            "price_ai": 0.03,                 # AI价：博查/IQS查不到填 null；经验估算时也填这里
+            "price_ai": 0.03,                 # AI价：博查/IQS 查不到时**必须**填经验估算（v9.4 强制不允许 null）
             "ai_source": "经验预估",            # AI价查不到时填"经验预估"
             # price_unit 和 cost_ratio 由 generate_report.py 自动计算
             "found": True,
             "cost_tier": "low",
-            "func_impact": "去耦电容影响电源稳定性",
-            "exp_impact": "影响长期可靠性",
-            "func_impact_label": "一般",
-            "exp_impact_label": "一般",
-            "user_value": 2,
+            # v9.4 字段（短语 + 枚举）
+            "func_impact": "电源稳定",
+            "exp_impact": "可靠性",
+            "user_value": "低",
             "note": "通用料，价格极低"
         }
     ]
