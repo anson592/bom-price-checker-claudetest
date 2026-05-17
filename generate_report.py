@@ -81,6 +81,14 @@ def _compute_price_unit(node: dict) -> None:
             f"(part_number={node.get('part_number','?')})",
             file=sys.stderr,
         )
+    # 确保 price_unit 始终是数字，null 会导致前端 .toFixed() 崩溃
+    if computed is None:
+        print(
+            f"⚠️  price_unit 无法计算（mall/ai/existing 均为 null），设为 0 "
+            f"(part_number={node.get('part_number','?')})",
+            file=sys.stderr,
+        )
+        computed = 0
     node["price_unit"] = computed
 
 

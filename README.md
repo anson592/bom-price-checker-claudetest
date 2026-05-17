@@ -4,7 +4,7 @@
 
 从产品需求反推 BOM 清单（支持经济版/标准版/高性能版多版本对比），或直接读取 BOM 表，跨多个平台查询最低价，生成带来源链接的比价单。
 
-**版本**: 9.5.3 | **更新**: 2026-05-17
+**版本**: 9.5.4 | **更新**: 2026-05-17
 
 ## 功能特性
 
@@ -85,6 +85,8 @@ bom-price-checker-claudetest/
 
 ## 版本历史
 
+- **9.5.4** (2026-05-17)
+  - **修复报告白屏崩溃**：`price_unit` 为 null 时（mall/ai/existing 均缺失）`generate_report.py` 现在强制设为 0 并打印警告，不再注入 null 到前端；React 组件里所有 `.toFixed()` 调用加 `?? 0` 防护，防止任何边界数据导致整页崩溃
 - **9.5.3** (2026-05-17)
   - **悬停背景色修复（进行中）**：CSS2 的 `background-color: transparent` 被 CSS1 的 `background` shorthand 覆盖，改用 `background: transparent !important` 强制覆盖；鼠标悬停背景色问题尚未完全解决，待后续跟进
   - **rail 列分隔线修复**：`.w2-vrow-sub.is-vfirst > .w2-rail { border-bottom }` 被同块 `not(.is-vlast) > td { border-bottom: none !important }` 覆盖，加 `!important` 修复；分类/功能/体验/备注列组间分隔线现已正常显示
