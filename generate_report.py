@@ -37,6 +37,12 @@ FIELD_ALIASES = {
     "source_url": "mall_url",
 }
 
+# mall_source 填了 AI 来源时，视为商城未查到，清空商城字段
+_AI_SOURCES = {"博查", "博查搜索", "博查+IQS", "iqs", "IQS搜索", "经验预估"}
+
+# 一次性费用类别，不参与单套成本计算
+_ONE_TIME_CATEGORIES = {"认证费", "NRE", "开模费", "工装费", "模具费", "认证", "合规认证"}
+
 
 def _apply_aliases(node: dict) -> None:
     for old, new in FIELD_ALIASES.items():
@@ -45,6 +51,26 @@ def _apply_aliases(node: dict) -> None:
                 node[new] = node.pop(old)
             else:
                 del node[old]
+
+
+def _sanitize_mall_fields(node: dict) -> None:
+    """清洗商城字段：
+    1. mall_source 是 AI 来源时，清空商城三字段
+    2. price_mall=0 且 mall_url='' 时，视为占位行，清零为 null（避免渲染空链接）
+    """
+    src = node.get("mall_source") or ""
+    if src in _AI_SOURCES:
+        print(
+            f"⚠️  mall_source='{src}' 是 AI 来源，清空 price_mall/mall_source/mall_url "
+            f"(part_number={node.get('part_number','?')})",
+            file=sys.stderr,
+        )
+        node["price_mall"] = None
+        node["mall_source"] = ""
+        node["mall_url"] = ""
+    elif node.get("price_mall") == 0 and not node.get("mall_url"):
+        # price_mall=0 + 无链接 = AI 把占位行误填为 0，应为 null
+        node["price_mall"] = None
 
 
 def _compute_price_unit(node: dict) -> None:
@@ -143,6 +169,7 @@ def normalize_data(data: dict) -> dict:
         if item.get("is_variant"):
             for v in item.get("variants") or []:
                 _apply_aliases(v)
+                _sanitize_mall_fields(v)
                 _compute_price_unit(v)
                 _validate_node(
                     v, f"{item.get('category','?')}/{v.get('version','?')}"
@@ -159,13 +186,23 @@ def normalize_data(data: dict) -> dict:
                     file=sys.stderr,
                 )
         else:
+            _sanitize_mall_fields(item)
             _compute_price_unit(item)
             _validate_node(
                 item, f"{item.get('category','?')}/{item.get('part_number','?')}"
             )
+        # 一次性费用警告
+        if item.get("category") in _ONE_TIME_CATEGORIES:
+            print(
+                f"⚠️  category='{item.get('category')}' 是一次性费用，不计入单套成本 "
+                f"(id={item.get('id')}, part_number={item.get('part_number','?')})",
+                file=sys.stderr,
+            )
 
     total = 0.0
     for item in data.get("items") or []:
+        if item.get("category") in _ONE_TIME_CATEGORIES:
+            continue
         if item.get("is_variant"):
             v = next(
                 (
@@ -183,6 +220,14 @@ def normalize_data(data: dict) -> dict:
 
     if total > 0:
         for item in data.get("items") or []:
+            if item.get("category") in _ONE_TIME_CATEGORIES:
+                # 一次性费用：清除旧 cost_ratio，不参与成本占比
+                if item.get("is_variant"):
+                    for v in item.get("variants") or []:
+                        v.pop("cost_ratio", None)
+                else:
+                    item.pop("cost_ratio", None)
+                continue
             if item.get("is_variant"):
                 for v in item.get("variants") or []:
                     if isinstance(v.get("price_unit"), (int, float)):

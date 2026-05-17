@@ -4,7 +4,7 @@
 
 从产品需求反推 BOM 清单（支持经济版/标准版/高性能版多版本对比），或直接读取 BOM 表，跨多个平台查询最低价，生成带来源链接的比价单。
 
-**版本**: 9.5.5 | **更新**: 2026-05-17
+**版本**: 9.5.6 | **更新**: 2026-05-17
 
 ## 功能特性
 
@@ -85,6 +85,10 @@ bom-price-checker-claudetest/
 
 ## 版本历史
 
+- **9.5.6** (2026-05-17)
+  - **修复商城价列显示 AI 价根因**：SKILL.md 字段速查表（Step A）和 JSON 模板注释中，`mall_source` 明确只允许 `"立创商城"` / `"华秋商城"` / `"云汉芯城"` / `"LCSC"`，严禁填 `"博查"` / `"IQS搜索"` / `"经验预估"`；`price_mall` 商城没查到时必须填 `null`，不能把 AI 价复制过来。`generate_report.py` 加防御层：`mall_source` 是 AI 来源时自动清空商城三字段
+  - **修复认证费算进单套成本根因**：SKILL.md Step A 价格字段说明处加硬约束：认证费 / NRE / 开模费 / 工装费 / 模具费等一次性费用严禁写进 `items` 数组，否则会虚高单套成本。`generate_report.py` 加防御层：`_ONE_TIME_CATEGORIES` 跳过 total 累加，清除其 `cost_ratio`
+  - **修复多版本占位行 `price_mall=0` 问题**：SKILL.md 明确某版本不适用时 `price_mall` 必须填 `null` 不能填 `0`；`generate_report.py` 加防御层：`price_mall=0` 且无 `mall_url` 时自动转为 `null`
 - **9.5.5** (2026-05-17)
   - **修复多版本报告白屏**：用户在 Step 5 选"两个都要"时，AI 错误地将 `selected_version` 填为 `"经济版+标准版"`（版本名拼接），导致前端 `totals[version]` 为 `undefined`，`.toFixed()` 崩溃白屏。在 SKILL.md 的 Step 5 和 Step A JSON 模板两处加入硬约束：`selected_version` 必须严格等于 `versions` 数组中的某一个字符串，多版本时取 `versions[0]`，严禁拼接
 - **9.5.4** (2026-05-17)

@@ -786,6 +786,7 @@ eMMC（Flash 系统盘）和 LPDDR / DDR（运行内存）**必须分两行**写
 - 模组类（显示/摄像头/GPS/WiFi_BLE/4G_5G）走成品模组，不写裸 IC 型号
 - 核心元件（MCU/传感器/电池/电源 IC/显示模组/摄像头/通信模组/存储）`brand` 不允许为空 / "混用" / "通用" / "-"
 - 散装件（阻容感/轻触开关/喇叭/连接器/PCB/外壳）允许 `brand="混用"`，但 `description` 必须列 ≥ 1 个候选品牌
+- **⚠️ 一次性费用（认证费/NRE/开模费/工装费/模具费）严禁出现在 BOM items 里**。这类费用不是单套物料成本，写进 items 会导致成本计算严重失真。如需说明，在对话或 `ai_suggestion` 字段里注明，不写进 JSON items。
 
 ---
 
@@ -1242,9 +1243,11 @@ python3 scripts/lcsc_playwright_verify.py '{型号}' --ai-price {Step1价格} --
 
 | confidence | mall_source | mall_url |
 |-----------|--------------|------------|
-| `verified` | 保持原值（"博查+IQS"/"博查搜索"/"IQS搜索"） | 保持原值 |
-| `suspicious` | 覆盖为 "立创商城" | `https://www.szlcsc.com/search?q={型号}` |
-| `unverified` | 保持原值 | 保持原值 |
+| `verified` | 覆盖为 `"立创商城"` | 保持原值（Playwright 验证的真实链接） |
+| `suspicious` | 覆盖为 `"立创商城"` | `https://www.szlcsc.com/search?q={型号}` |
+| `unverified` | 保持原值（仅限真实商城名） | 保持原值 |
+
+⚠️ Playwright 验证后 `mall_source` 必须是真实商城名，不能保留 "博查+IQS" 等 AI 来源标记
 
 ---
 #### ~~Step 3~~（v9.4 已并入 Step 1）
@@ -1323,28 +1326,30 @@ python3 scripts/lcsc_playwright_verify.py '{型号}' --ai-price {Step1价格} --
 
 每颗元器件查询完成后，按以下规则映射为输入 JSON 字段：
 
-**① `price_mall`（商城价）= 最可靠的搜索价格**
+**① `price_mall`（商城价）= 真实商城查到的价格**
 
 ```
-优先级: 立创BOM配单价 > Playwright实时验证商城价 > 博查/IQS搜索价
+仅限以下来源：立创BOM配单价 > Playwright实时验证商城价（立创/华秋/云汉/LCSC）
 price_mall = 上述来源中的最低价
+
+⚠️ 博查/IQS 查到的价格不算商城价，只能填 price_ai，price_mall 必须保持 null
 ```
 
-- 所有来源均无结果 → `price_mall = null`
+- 所有商城来源均无结果 → `price_mall = null`（不能把 AI 价复制过来）
 - 立创BOM批量配单的价格直接采纳（最权威）
 
 **② `mall_source`（商城价来源描述）**
 
 ```
-根据实际获取渠道填写:
-  → "立创商城"    （立创BOM批量配单 或 Playwright 实时验证立创）
-  → "华秋商城"    （Playwright 实时验证华秋）
-  → "云汉芯城"    （Playwright 实时验证云汉）
-  → "LCSC国际站"  （Playwright 实时验证 LCSC）
-  → "博查+IQS"    （双源搜索，未经商城验证）
-  → "博查搜索"    （仅博查有结果）
-  → "IQS搜索"     （仅 IQS 有结果）
-  → ""            （全都没搜到）
+根据实际获取渠道填写（仅限真实商城来源）:
+  → "立创商城"              （立创BOM批量配单 或 Playwright 实时验证立创）
+  → "华秋商城"              （Playwright 实时验证华秋）
+  → "云汉芯城"              （Playwright 实时验证云汉）
+  → "LCSC国际站"            （Playwright 实时验证 LCSC）
+  → "立创商城+华秋商城"     （双商城均验证成功）
+  → ""                      （商城全都没查到）
+
+⚠️ 严禁填 "博查搜索" / "IQS搜索" / "博查+IQS"——这些是 AI 来源，只能填进 ai_source
 ```
 
 **③ `mall_url`（商城确认链接）**
@@ -1429,8 +1434,8 @@ found = false → 两者都为 null，只有经验预估
 
 | 字段 | 谁填 | 填什么 | 空值规则 |
 |---|---|---|---|
-| `price_mall` | LLM 抄查询结果 | 立创/华秋商城最低价（双源取较低） | 都没查到 → `null` |
-| `mall_source` | LLM 抄查询结果 | "立创商城" / "华秋商城" / "博查搜索" / "IQS搜索" | 都没查到 → `""` |
+| `price_mall` | LLM 抄查询结果 | **仅限立创/华秋/云汉/LCSC 商城查到的价格**；博查/IQS 查到的价格**只能填 `price_ai`，严禁填 `price_mall`** | 商城没查到 → `null`（不能把 AI 价复制过来） |
+| `mall_source` | LLM 抄查询结果 | **仅限** `"立创商城"` / `"华秋商城"` / `"云汉芯城"` / `"LCSC"` / `"立创商城+华秋商城"`；**严禁填 `"博查"` / `"博查搜索"` / `"IQS搜索"`** | 商城没查到 → `""` |
 | `mall_url` | LLM 抄查询结果 | 仅当 `mall_source` 是 立创/华秋/云汉/LCSC 才填 URL | 其他 → `""` |
 | `price_ai` | LLM 抄查询结果 | 博查/IQS 最低价；经验估算时也填这里 | 都没查到 → `null` |
 | `ai_source` | LLM 抄查询结果 | "博查" / "iqs" / "经验预估" | - |
@@ -1527,7 +1532,7 @@ bom_final = {
                     "description": "<关键参数>",
                     # ↓↓↓ 价格字段：直接抄查询结果，不计算 ↓↓↓
                     "price_mall": 8.5,                    # 商城价：搜到什么填什么，两个商城取最低
-                    "mall_source": "立创商城",            # 来源：立创/华秋/云汉/LCSC/博查搜索/IQS搜索
+                    "mall_source": "立创商城",            # 来源：立创/华秋/云汉/LCSC（⚠️ 严禁填博查/IQS搜索/经验预估，AI来源只能填 price_ai）
                     "mall_url": "https://item.szlcsc.com/16424.html",  # v9.4：立创要用详情页 URL（item.szlcsc.com/{productId}.html）
                     "price_ai": 12,                      # AI价：博查/IQS查到什么填什么；都没有时填经验估算（v9.4 不允许 null）
                     "ai_source": "博查",                  # 来源：博查/iqs/经验预估
@@ -1572,8 +1577,8 @@ with open(output_path, "w", encoding="utf-8") as f:
 
 | 字段 | 谁填 | 填什么 | 示例 |
 |------|------|--------|------|
-| `price_mall` | LLM 抄查询结果 | 商城搜到的最低价 | `30.00` |
-| `mall_source` | LLM 抄查询结果 | 商城来源 | `"立创商城"` |
+| `price_mall` | LLM 抄查询结果 | 商城搜到的最低价；**商城没查到时填 `null`，不能把 AI 价复制过来** | `30.00` |
+| `mall_source` | LLM 抄查询结果 | 商城来源，**只能填 `"立创商城"` / `"华秋商城"` / `"云汉芯城"` / `"LCSC"`；严禁填 `"博查"` / `"IQS搜索"` / `"经验预估"`** | `"立创商城"` |
 | `mall_url` | LLM 抄查询结果 | 商城链接（仅立创/华秋/云汉/LCSC有） | `"https://..."` |
 | `price_ai` | LLM 抄查询结果 | 博查/IQS 查到的价格；经验估算时也填这里 | `28.50` |
 | `ai_source` | LLM 抄查询结果 | AI 来源 | `"博查"` / `"iqs"` / `"经验预估"` |
@@ -1582,6 +1587,10 @@ with open(output_path, "w", encoding="utf-8") as f:
 | `found` | LLM 抄查询结果 | mall 或 ai 至少一个有值 | `True` |
 
 **重要**：从 v9.1 起 `price_unit` 和 `cost_ratio` 由 `generate_report.py` 自动计算。LLM 写 JSON 时**不再手填这两个字段**（即便填了也会被脚本覆盖）。规则：`price_unit = price_mall ?? price_ai`；`cost_ratio = price_unit / 单套总成本 × 100`。
+
+**⚠️ 一次性费用严禁写进 items**：认证费 / NRE / 开模费 / 工装费 / 模具费等一次性费用**不得出现在 `items` 数组里**，否则会被算进单套 BOM 成本导致成本严重虚高。如需记录，写在 `data.notes` 字段或对话说明中。
+
+**⚠️ 多版本 variant 占位行**：某版本不适用某元件时，`price_mall` 必须填 `null`（不能填 `0`），`mall_url` 填 `""`，`price_ai` 填经验估算或 `0`。`price_mall=0` 会被误判为有商城价，导致前端渲染空链接。
 
 **Step B：生成 HTML 报告**
 
