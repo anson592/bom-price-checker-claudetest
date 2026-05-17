@@ -937,6 +937,11 @@ AskUserQuestion({
 })
 ```
 
+**⚠️ 用户选"两个都要"/"三个都要"时的处理规则**：
+- `versions` 数组填入所有选中版本，如 `["经济版", "标准版"]`
+- `selected_version` **必须取 `versions[0]`**（第一个版本），即 `"经济版"`
+- **严禁**把多个版本名拼接（如 `"经济版+标准版"` 是错误的），`selected_version` 只能是 `versions` 数组中的某一个字符串
+
 **版本性能递进的硬要求**：
 
 1. 不要照搬任何示例，必须根据用户的实际需求选择合适的 MCU 系列
@@ -1494,7 +1499,7 @@ bom_final = {
     "total_quantity": "<总需求量>",
     "batch_quantity": "<每批次数量>",
     "versions": ["经济版", "标准版", "高性能版"],
-    "selected_version": "<用户选择的版本>",
+    "selected_version": "经济版",  # ⚠️ 必须严格等于 versions 数组中的某一个字符串。多版本时取 versions[0]。严禁拼接（"经济版+标准版" 是错误的）。
     "ai_suggestion": "<AI推荐建议>",
     "risk_tags": [
         {"tag": "风险描述", "level": "high/mid/low", "desc": "详细说明"}
