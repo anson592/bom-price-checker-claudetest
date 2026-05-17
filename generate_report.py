@@ -208,50 +208,146 @@ def load_data(json_path: str) -> dict:
     return data
 
 
-def inject_data(template: str, data: dict) -> str:
-    """将 JSON 数据注入模板的标记位置"""
+def _inject_legacy(template: str, data: dict, json_path: str) -> str:
+    """旧模板（v9.4.x）：替换 // __BOM_DATA_INJECTION_POINT__ 所在 <script> 块"""
     marker_pos = template.find(INJECTION_MARKER)
-    if marker_pos == -1:
-        print("错误: 模板中未找到数据注入标记", file=sys.stderr)
-        sys.exit(1)
-
-    # 找到标记所在 <script> 块的结束位置（替换整个 IIFE 内容）
-    # 从标记开始往后找到对应的 })(); 和 </script>
-    # 更精确的做法: 替换从标记到下一个 </script> 之间的内容
-
-    # 简单策略: 把整个 data loader script 块替换为内嵌数据
-    # 找到包含标记的 <script> 开始位置
     script_start = template.rfind("<script>", 0, marker_pos)
     if script_start == -1:
         script_start = template.rfind("<script ", 0, marker_pos)
-
-    # 找到对应的 </script>
     script_end = template.find("</script>", marker_pos)
     if script_end == -1:
         print("错误: 未找到脚本结束标记", file=sys.stderr)
         sys.exit(1)
     script_end += len("</script>")
 
-    # 生成内嵌数据的 script 块（仅设置数据，不触发事件）
-    # 事件触发必须在 main script 的 addEventListener 注册之后
     data_json = json.dumps(data, ensure_ascii=False, indent=2)
     new_script = f"""<!-- ── Data (injected by generate_report.py) ─────────────── -->
 <script>
 // __BOM_DATA_INJECTION_POINT__
-// 此数据由 generate_report.py 自动注入，源文件: {Path(json_path).name if 'json_path' in dir() else 'unknown'}
+// 此数据由 generate_report.py 自动注入，源文件: {Path(json_path).name}
 window.BOM_DATA = {data_json};
 </script>"""
-
     result = template[:script_start] + new_script + template[script_end:]
-
-    # 在 </body> 前注入事件触发脚本（确保在 main script 的 addEventListener 之后）
     trigger_script = """<script>
 // 在所有脚本加载完毕后触发渲染
 window.dispatchEvent(new Event('bom-data-ready'));
 </script>"""
-    result = result.replace("</body>", trigger_script + "\n</body>")
+    return result.replace("</body>", trigger_script + "\n</body>")
 
-    return result
+
+def _inject_bundler(template: str, data: dict, json_path: str) -> str:
+    """新模板（Claude Design bundler）：替换 manifest 里数据脚本 entry 的 base64 内容。
+
+    bundler 模板通过 4 个 <script src="UUID"> 加载脚本，其中一个是数据文件，
+    源码形如 `window.BOM_DATA = {...}; window.BOM_HELPERS = (...)()`。
+    我们解压源码，用正则替换 BOM_DATA 的对象字面量为新数据，重新 gzip+base64 写回。
+    """
+    import base64
+    import gzip
+
+    # 找到 manifest 行 —— 模板里只有一个 type="__bundler/manifest" script
+    manifest_marker = '<script type="__bundler/manifest">'
+    manifest_start = template.find(manifest_marker)
+    if manifest_start == -1:
+        print("错误: 未找到 __bundler/manifest 标记", file=sys.stderr)
+        sys.exit(1)
+    json_start = template.find("\n", manifest_start) + 1
+    json_end = template.find("\n  </script>", json_start)
+    if json_end == -1:
+        print("错误: __bundler/manifest 未正确闭合", file=sys.stderr)
+        sys.exit(1)
+
+    manifest_json = template[json_start:json_end]
+    manifest = json.loads(manifest_json)
+
+    # 找到数据脚本 entry —— 解压后包含 `window.BOM_DATA =`
+    data_uuid = None
+    data_src = None
+    for uuid, entry in manifest.items():
+        if entry.get("mime") not in ("application/javascript", "text/javascript"):
+            continue
+        try:
+            raw = base64.b64decode(entry["data"])
+            src = (
+                gzip.decompress(raw).decode("utf-8")
+                if entry.get("compressed")
+                else raw.decode("utf-8")
+            )
+        except Exception:
+            continue
+        if "window.BOM_DATA" in src and "BOM_HELPERS" in src:
+            data_uuid = uuid
+            data_src = src
+            break
+    if data_uuid is None:
+        print("错误: bundler manifest 中未找到 BOM 数据脚本", file=sys.stderr)
+        sys.exit(1)
+
+    # 用正则把 `window.BOM_DATA = {...}` 整个替换掉
+    # BOM_DATA 块结束 = 最近一个 `};\n` 后跟 `\n` 或 `// ` 注释或 `window.`/`const `
+    match = re.search(r"window\.BOM_DATA\s*=\s*", data_src)
+    if not match:
+        print("错误: 数据脚本中未找到 window.BOM_DATA 赋值", file=sys.stderr)
+        sys.exit(1)
+    obj_start = match.end()
+    # 平衡花括号扫描找对象结尾
+    depth = 0
+    i = obj_start
+    in_string = False
+    string_char = None
+    escape_next = False
+    while i < len(data_src):
+        c = data_src[i]
+        if escape_next:
+            escape_next = False
+        elif c == "\\":
+            escape_next = True
+        elif in_string:
+            if c == string_char:
+                in_string = False
+        elif c in ('"', "'", "`"):
+            in_string = True
+            string_char = c
+        elif c == "{":
+            depth += 1
+        elif c == "}":
+            depth -= 1
+            if depth == 0:
+                obj_end = i + 1
+                break
+        i += 1
+    else:
+        print("错误: 无法定位 BOM_DATA 对象字面量结尾", file=sys.stderr)
+        sys.exit(1)
+
+    data_json = json.dumps(data, ensure_ascii=False, indent=2)
+    new_src = data_src[:match.start()] + (
+        f"// 此数据由 generate_report.py 注入，源文件: {Path(json_path).name}\n"
+        f"window.BOM_DATA = {data_json}"
+    ) + data_src[obj_end:]
+
+    # 重新压缩 + base64
+    new_bytes = new_src.encode("utf-8")
+    if manifest[data_uuid].get("compressed"):
+        new_bytes = gzip.compress(new_bytes, compresslevel=9)
+    manifest[data_uuid]["data"] = base64.b64encode(new_bytes).decode("ascii")
+
+    new_manifest_json = json.dumps(manifest, ensure_ascii=False, separators=(",", ":"))
+    return template[:json_start] + new_manifest_json + template[json_end:]
+
+
+def inject_data(template: str, data: dict, json_path: str = "") -> str:
+    """根据模板形态自动选择注入方式。
+
+    - 旧模板（含 // __BOM_DATA_INJECTION_POINT__ 标记）：替换标记所在 script 块
+    - 新模板（Claude Design bundler）：改写 manifest 里数据脚本 entry
+    """
+    if '<script type="__bundler/manifest">' in template:
+        return _inject_bundler(template, data, json_path)
+    if INJECTION_MARKER in template:
+        return _inject_legacy(template, data, json_path)
+    print("错误: 模板形态无法识别（既不是旧模板也不是 bundler 模板）", file=sys.stderr)
+    sys.exit(1)
 
 
 def generate_output_name(data: dict, json_path: str) -> str:
@@ -286,7 +382,7 @@ def main():
     data = normalize_data(data)
 
     # 注入
-    result = inject_data(template, data)
+    result = inject_data(template, data, json_path)
 
     # 输出
     if output_path is None:

@@ -4,7 +4,7 @@
 
 从产品需求反推 BOM 清单（支持经济版/标准版/高性能版多版本对比），或直接读取 BOM 表，跨多个平台查询最低价，生成带来源链接的比价单。
 
-**版本**: 9.4.0 | **更新**: 2026-05-16
+**版本**: 9.5.3 | **更新**: 2026-05-17
 
 ## 功能特性
 
@@ -85,6 +85,24 @@ bom-price-checker-claudetest/
 
 ## 版本历史
 
+- **9.5.3** (2026-05-17)
+  - **悬停背景色修复（进行中）**：CSS2 的 `background-color: transparent` 被 CSS1 的 `background` shorthand 覆盖，改用 `background: transparent !important` 强制覆盖；鼠标悬停背景色问题尚未完全解决，待后续跟进
+  - **rail 列分隔线修复**：`.w2-vrow-sub.is-vfirst > .w2-rail { border-bottom }` 被同块 `not(.is-vlast) > td { border-bottom: none !important }` 覆盖，加 `!important` 修复；分类/功能/体验/备注列组间分隔线现已正常显示
+- **9.5.2** (2026-05-17)
+  - **Treemap 回退**：将 v9.5.1 引入的 squarified treemap 算法回退到 v9.5.0 原始 flex 行打包版本（CSS1 `.ws-tm` 规则 + JS `W2Treemap` 函数均回退）
+  - **悬停外框清理**：删除 v9.5.1 追加的粗糙 box-shadow 规则，只保留原有精细版（按组边界画线）
+  - **悬停背景色**：将 `rgba(217, 119, 87, 0.012)` 改为 `transparent`（被 CSS1 覆盖，未生效，见 v9.5.3）
+  - **rail 分隔线**：恢复 `is-vfirst > .w2-rail { border-bottom: 1px solid }` 规则（被 `!important` 覆盖，未生效，见 v9.5.3）
+- **9.5.1** (2026-05-17)
+  - **品牌列加宽**：colgroup 品牌列从 116px 加宽到 148px ✅
+  - **悬停外框**：删除 `outline` 规则，改用 box-shadow 模拟组边界框（第一行顶边+左右、最后一行底边+左右、中间行仅左右）✅
+  - **Treemap squarified 算法**：引入 squarify 函数 + 绝对定位布局（后在 v9.5.2 回退）
+  - **悬停背景色**：0.025 → 0.012（后在 v9.5.2 改为 transparent）
+  - **rail 分隔线**：尝试 is-vfirst border-bottom: none + is-vlast border-bottom（方向错误，在 v9.5.2 回退）
+- **9.5.0** (2026-05-17)
+  - **报告模板换代**：用 Claude Design 输出的 React 单文件 bundler 模板替换原 vanilla JS 模板。新模板内嵌 React 18 + Babel 标准版 + IBM Plex Mono 字体，整体 7.8MB（多数为字体），打开即用，无需联网
+  - **数据接口保持不变**：`window.BOM_DATA` 形态完全沿用，`generate_report.py` 自动识别旧/新模板，分别注入数据。新模板额外提供 `window.BOM_HELPERS`（`fmt` / `fmtBig` / `priceFor` / `totalFor` / `ratiosFor` / `sourceKind`）作为前端组件公共工具
+  - **旧模板备份**：`report-template.v9.4.1.bak.html`
 - **9.4.0** (2026-05-16)
   - **立创商城详情页 URL 修复**：scripts/lcsc_szlcsc_search.py 用 productId 拼 `item.szlcsc.com/{id}.html`（v9.3 用 `www.szlcsc.com/search?q=` 是 API 端点，浏览器访问报 500）
   - **AI 价强制查询根除歧义**：v9.3 流程图把 Step 1 / Step 3 都写成"博查+IQS"，决策树 5 处"跳过 Step 1、Step 2"导致模型把强制 AI 查询一起跳过——v9.4 把 Step 1/Step 3 合并为统一 Step 1（强制执行），所有商城价查到的元件**仍然必须**走博查+IQS
